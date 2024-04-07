@@ -33,6 +33,83 @@ struct RecordItem<'a> {
     dest: &'a Path,
 }
 
+// cli interface
+fn cli_rip() -> App<'static> {
+    App::new("rip")
+        .version(crate_version!())
+        .author(crate_authors!())
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .about(
+            "Rm ImProved
+Send files to the graveyard (/tmp/graveyard-$USER by default) instead of unlinking them.",
+        )
+        .arg(
+            Arg::new("TARGET")
+                .about("File or directory to remove")
+                .short('t')
+                .long("target")
+                .takes_value(true)
+                .multiple(true), //.index(1)
+        )
+        .arg(
+            Arg::new("graveyard")
+                .about("Directory where deleted files go to rest")
+                .long("graveyard")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("decompose")
+                .about("Permanently deletes (unlink) the entire graveyard")
+                .short('d')
+                .long("decompose"),
+        )
+        .arg(
+            Arg::new("seance")
+                .about("Prints files that were sent under the current directory")
+                .short('s')
+                .long("seance"),
+        )
+        .arg(
+            Arg::new("unbury")
+                .about(
+                    "Undo the last removal by the current user, or specify some file(s) in the \
+                   graveyard.  Combine with -s to restore everything printed by -s.",
+                )
+                .short('u')
+                .long("unbury")
+                .value_name("target")
+                .min_values(0),
+        )
+        .arg(
+            Arg::new("inspect")
+                .about("Prints some info about TARGET before prompting for action")
+                .short('i')
+                .long("inspect"),
+        )
+        .subcommand(
+            App::new("completion")
+                .version(crate_version!())
+                .author(crate_authors!())
+                .setting(AppSettings::Hidden)
+                .about("AutoCompletion")
+                .arg(
+                    Arg::new("shell")
+                        .short('s')
+                        .long("shell")
+                        .about("Selects shell")
+                        .required(true)
+                        .takes_value(true)
+                        .possible_values(&["bash", "elvish", "fish", "powershell", "zsh"]),
+                )
+                .arg(
+                    Arg::new("manual")
+                        .short('m')
+                        .long("manual")
+                        .about("Display instructions on how to install autocompletions"),
+                ),
+        )
+}
+
 fn main() {
     if let Err(ref e) = run() {
         let stderr = &mut ::std::io::stderr();
@@ -266,82 +343,6 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-// cli interface
-fn cli_rip() -> App<'static> {
-    App::new("rip")
-        .version(crate_version!())
-        .author(crate_authors!())
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .about(
-            "Rm ImProved
-Send files to the graveyard (/tmp/graveyard-$USER by default) instead of unlinking them.",
-        )
-        .arg(
-            Arg::new("TARGET")
-                .about("File or directory to remove")
-                .short('t')
-                .long("target")
-                .takes_value(true)
-                .multiple(true), //.index(1)
-        )
-        .arg(
-            Arg::new("graveyard")
-                .about("Directory where deleted files go to rest")
-                .long("graveyard")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("decompose")
-                .about("Permanently deletes (unlink) the entire graveyard")
-                .short('d')
-                .long("decompose"),
-        )
-        .arg(
-            Arg::new("seance")
-                .about("Prints files that were sent under the current directory")
-                .short('s')
-                .long("seance"),
-        )
-        .arg(
-            Arg::new("unbury")
-                .about(
-                    "Undo the last removal by the current user, or specify some file(s) in the \
-                   graveyard.  Combine with -s to restore everything printed by -s.",
-                )
-                .short('u')
-                .long("unbury")
-                .value_name("target")
-                .min_values(0),
-        )
-        .arg(
-            Arg::new("inspect")
-                .about("Prints some info about TARGET before prompting for action")
-                .short('i')
-                .long("inspect"),
-        )
-        .subcommand(
-            App::new("completion")
-                .version(crate_version!())
-                .author(crate_authors!())
-                .setting(AppSettings::Hidden)
-                .about("AutoCompletion")
-                .arg(
-                    Arg::new("shell")
-                        .short('s')
-                        .long("shell")
-                        .about("Selects shell")
-                        .required(true)
-                        .takes_value(true)
-                        .possible_values(&["bash", "elvish", "fish", "powershell", "zsh"]),
-                )
-                .arg(
-                    Arg::new("manual")
-                        .short('m')
-                        .long("manual")
-                        .about("Display instructions on how to install autocompletions"),
-                ),
-        )
-}
 
 /// Print completions
 pub fn print_completions<G: Generator>(app: &mut App) {
