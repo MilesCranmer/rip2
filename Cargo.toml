@@ -1,27 +1,39 @@
 [package]
-edition = '2018'
-name = "rm-improved"
-version = "0.13.1"
-authors = ["mail@nivekuil.com"]
+edition = '2021'
+name = "rip"
+version = "0.1.0"
+authors = ["mail@nivekuil.com", "mahid@standingpad.org", "miles.cranmer@gmail.com"]
 description = "rip: a safe and ergonomic alternative to rm"
-repository = "https://github.com/nivekuil/rip"
-readme = "README.org"
+repository = "https://github.com/MilesCranmer/rip"
+readme = "README.md"
 license = "GPL-3.0+"
 include = [
-    "**/*.rs",
+    "src/*.rs",
     "Cargo.toml",
 ]
 categories = ["command-line-utilities"]
 autobins = false
 
 [dependencies]
-clap = "2"
+clap = { version = "4.4", features = ["derive"] }
+clap_complete = "4.4"
+clap_complete_nushell = "4.4"
 walkdir = "1"
 error-chain = "0.12"
 chrono = "0.4.33"
 
+[dev-dependencies]
+lazy_static = "1.4"
+rand = "0.8"
+rstest = "0.18"
+tempfile = "3"
+
 [profile.release]
 opt-level = "s"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"
 
 [[bin]]
 name = "rip"
