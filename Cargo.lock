@@ -662,7 +662,7 @@ checksum = "e898588f33fdd5b9420719948f9f2a32c922a246964576f71ba7f24f80610fbc"
 
 [[package]]
 name = "rip2"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "assert_cmd",
  "chrono",
