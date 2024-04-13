@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Default)]
-#[command(author, version, about, long_about = None)]
+#[command(version, about, long_about = None)]
 pub struct Args {
     /// File or directory to remove
     pub targets: Vec<PathBuf>,
