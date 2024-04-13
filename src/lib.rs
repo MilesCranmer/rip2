@@ -104,7 +104,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
                 false => PathBuf::from(entry.orig),
             };
 
-            move_file(entry.dest, &orig, &mode, stream).map_err(|e| {
+            move_target(entry.dest, &orig, &mode, stream).map_err(|e| {
                 Error::new(
                     e.kind(),
                     format!(
@@ -220,7 +220,7 @@ fn bury_target(
         }
     };
 
-    move_file(source, dest, mode, stream).map_err(|e| {
+    move_target(source, dest, mode, stream).map_err(|e| {
         fs::remove_dir_all(dest).ok();
         Error::new(e.kind(), "Failed to bury file")
     })?;
@@ -318,15 +318,15 @@ fn write_log(
     Ok(())
 }
 
-pub fn move_file(
-    source: &Path,
+pub fn move_target(
+    target: &Path,
     dest: &Path,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
 ) -> Result<(), Error> {
     // Try a simple rename, which will only work within the same mount point.
     // Trying to rename across filesystems will throw errno 18.
-    if fs::rename(source, dest).is_ok() {
+    if fs::rename(target, dest).is_ok() {
         return Ok(());
     }
 
@@ -339,12 +339,12 @@ pub fn move_file(
         fs::create_dir_all(parent)?
     }
 
-    let sym_link_data = fs::symlink_metadata(source)?;
+    let sym_link_data = fs::symlink_metadata(target)?;
     if sym_link_data.is_dir() {
         // Walk the source, creating directories and copying files as needed
-        for entry in WalkDir::new(source).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(target).into_iter().filter_map(|e| e.ok()) {
             // Path without the top-level directory
-            let orphan = entry.path().strip_prefix(source).map_err(|_| {
+            let orphan = entry.path().strip_prefix(target).map_err(|_| {
                 Error::new(
                     ErrorKind::Other,
                     "Parent directory isn't a prefix of child directories?",
@@ -375,27 +375,27 @@ pub fn move_file(
                 })?;
             }
         }
-        fs::remove_dir_all(source).map_err(|e| {
+        fs::remove_dir_all(target).map_err(|e| {
             Error::new(
                 e.kind(),
-                format!("Failed to remove dir: {}", source.display()),
+                format!("Failed to remove dir: {}", target.display()),
             )
         })?;
     } else {
-        copy_file(source, dest, mode, stream).map_err(|e| {
+        copy_file(target, dest, mode, stream).map_err(|e| {
             Error::new(
                 e.kind(),
                 format!(
                     "Failed to copy file from {} to {}",
-                    source.display(),
+                    target.display(),
                     dest.display()
                 ),
             )
         })?;
-        fs::remove_file(source).map_err(|e| {
+        fs::remove_file(target).map_err(|e| {
             Error::new(
                 e.kind(),
-                format!("Failed to remove file: {}", source.display()),
+                format!("Failed to remove file: {}", target.display()),
             )
         })?;
     }

@@ -1,6 +1,6 @@
 use rip2::args::{validate_args, Args};
 use rip2::util::TestMode;
-use rip2::{copy_file, move_file};
+use rip2::{copy_file, move_target};
 use rstest::rstest;
 use std::fs;
 use std::io::Cursor;
@@ -75,7 +75,7 @@ fn test_filetypes(
     if copy {
         copy_file(&source_path, &dest_path, &mode, &mut log).unwrap();
     } else {
-        move_file(&source_path, &dest_path, &mode, &mut log).unwrap();
+        move_target(&source_path, &dest_path, &mode, &mut log).unwrap();
     }
 
     let log_s = String::from_utf8(log).unwrap();
