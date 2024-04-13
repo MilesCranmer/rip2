@@ -199,9 +199,9 @@ fn bury_target(
         writeln!(stream, "{} is already in the graveyard.", source.display())?;
         if util::prompt_yes("Permanently unlink it?", mode, stream)? {
             if fs::remove_dir_all(source).is_err() {
-                if let Err(e) = fs::remove_file(source) {
-                    return Err(Error::new(e.kind(), "Couldn't unlink!"));
-                }
+                fs::remove_file(source).map_err(|e| {
+                    Error::new(e.kind(), format!("Couldn't unlink {}", source.display()))
+                })?;
             }
             return Ok(());
         } else {
