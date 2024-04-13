@@ -68,12 +68,11 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     let record: &Path = &graveyard.join(RECORD);
     let cwd = &env::current_dir()?;
 
-    if let Some(t) = cli.unbury {
+    if let Some(mut graves_to_exhume) = cli.unbury {
         // Vector to hold the grave path of items we want to unbury.
         // This will be used to determine which items to remove from the
         // record following the unbury.
         // Initialize it with the targets passed to -r
-        let mut graves_to_exhume: Vec<PathBuf> = t.iter().map(PathBuf::from).collect();
 
         // If -s is also passed, push all files found by seance onto
         // the graves_to_exhume.
