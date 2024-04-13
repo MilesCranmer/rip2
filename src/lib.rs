@@ -33,7 +33,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     // 2. Path pointed by the $GRAVEYARD variable
     // 3. $XDG_DATA_HOME/graveyard (only if XDG_DATA_HOME is defined)
     // 4. /tmp/graveyard-user
-    let graveyard: PathBuf = {
+    let graveyard: &PathBuf = &{
         if let Some(flag) = cli.graveyard {
             flag
         } else if let Ok(env) = env::var("RIP_GRAVEYARD") {
@@ -50,7 +50,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     };
 
     if !graveyard.exists() {
-        fs::create_dir_all(&graveyard)?;
+        fs::create_dir_all(graveyard)?;
         let metadata = graveyard.metadata()?;
         let mut permissions = metadata.permissions();
         permissions.set_mode(0o700);
@@ -66,7 +66,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
 
     // Stores the deleted files
     let record: &Path = &graveyard.join(RECORD);
-    let cwd = env::current_dir()?;
+    let cwd = &env::current_dir()?;
 
     if let Some(t) = cli.unbury {
         // Vector to hold the grave path of items we want to unbury.
@@ -151,78 +151,84 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     }
 
     for target in cli.targets {
-        // Check if source exists
-        let metadata = fs::symlink_metadata(&target).map_err(|_| {
-            Error::new(
-                ErrorKind::NotFound,
-                format!(
-                    "Cannot remove {}: no such file or directory",
-                    target.to_str().unwrap()
-                ),
-            )
-        })?;
-        // Canonicalize the path unless it's a symlink
-        let source = &if !metadata.file_type().is_symlink() {
-            cwd.join(&target)
-                .canonicalize()
-                .map_err(|e| Error::new(e.kind(), "Failed to canonicalize path"))?
-        } else {
-            cwd.join(&target)
-        };
-
-        if cli.inspect {
-            let moved_to_graveyard = do_inspection(target, source, metadata, &mode, stream)?;
-            if moved_to_graveyard {
-                continue;
-            }
-        }
-
-        // If rip is called on a file already in the graveyard, prompt
-        // to permanently delete it instead.
-        if source.starts_with(&graveyard) {
-            writeln!(stream, "{} is already in the graveyard.", source.display())?;
-            if util::prompt_yes("Permanently unlink it?", &mode, stream)? {
-                if fs::remove_dir_all(source).is_err() {
-                    if let Err(e) = fs::remove_file(source) {
-                        return Err(Error::new(e.kind(), "Couldn't unlink!"));
-                    }
-                }
-                continue;
-            } else {
-                writeln!(stream, "Skipping {}", source.display())?;
-                return Ok(());
-            }
-        }
-
-        let dest: &Path = &{
-            let dest = util::join_absolute(&graveyard, source);
-            // Resolve a name conflict if necessary
-            if util::symlink_exists(&dest) {
-                util::rename_grave(dest)
-            } else {
-                dest
-            }
-        };
-
-        move_file(source, dest, &mode, stream).map_err(|e| {
-            fs::remove_dir_all(dest).ok();
-            Error::new(e.kind(), "Failed to bury file")
-        })?;
-
-        // Clean up any partial buries due to permission error
-        write_log(source, dest, record).map_err(|e| {
-            Error::new(
-                e.kind(),
-                format!("Failed to write record at {}", record.display()),
-            )
-        })?;
+        bury_target(&target, record, graveyard, cwd, cli.inspect, &mode, stream)?;
     }
 
     Ok(())
 }
 
+fn bury_target(target: &PathBuf, record: &Path, graveyard: &PathBuf, cwd: &Path, inspect: bool, mode: &impl util::TestingMode, stream: &mut impl Write) -> Result<(), Error> {
+    // Check if source exists
+    let metadata = fs::symlink_metadata(target).map_err(|_| {
+        Error::new(
+            ErrorKind::NotFound,
+            format!(
+                "Cannot remove {}: no such file or directory",
+                target.to_str().unwrap()
+            ),
+        )
+    })?;
+    // Canonicalize the path unless it's a symlink
+    let source = &if !metadata.file_type().is_symlink() {
+        cwd.join(target)
+            .canonicalize()
+            .map_err(|e| Error::new(e.kind(), "Failed to canonicalize path"))?
+    } else {
+        cwd.join(target)
+    };
+
+    if inspect {
+        let moved_to_graveyard = do_inspection(target, source, metadata, mode, stream)?;
+        if moved_to_graveyard {
+            return Ok(());
+        }
+    }
+
+    // If rip is called on a file already in the graveyard, prompt
+    // to permanently delete it instead.
+    if source.starts_with(graveyard) {
+        writeln!(stream, "{} is already in the graveyard.", source.display())?;
+        if util::prompt_yes("Permanently unlink it?", mode, stream)? {
+            if fs::remove_dir_all(source).is_err() {
+                if let Err(e) = fs::remove_file(source) {
+                    return Err(Error::new(e.kind(), "Couldn't unlink!"));
+                }
+            }
+            return Ok(());
+        } else {
+            writeln!(stream, "Skipping {}", source.display())?;
+            return Ok(());
+        }
+    }
+
+    let dest: &Path = &{
+        let dest = util::join_absolute(graveyard, source);
+        // Resolve a name conflict if necessary
+        if util::symlink_exists(&dest) {
+            util::rename_grave(dest)
+        } else {
+            dest
+        }
+    };
+
+    move_file(source, dest, mode, stream).map_err(|e| {
+        fs::remove_dir_all(dest).ok();
+        Error::new(e.kind(), "Failed to bury file")
+    })?;
+
+    // Clean up any partial buries due to permission error
+    write_log(source, dest, record).map_err(|e| {
+        Error::new(
+            e.kind(),
+            format!("Failed to write record at {}", record.display()),
+        )
+    })?;
+
+    Ok(())
+}
+
 fn do_inspection(
-    target: PathBuf,
+    target: &Path,
     source: &PathBuf,
     metadata: Metadata,
     mode: &impl util::TestingMode,
