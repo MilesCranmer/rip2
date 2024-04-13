@@ -1,4 +1,4 @@
-use rip2::args::{validate_args, Args};
+use rip2::args::{validate_args, Args, Commands};
 use rip2::util::TestMode;
 use rip2::{copy_file, move_target};
 use rstest::rstest;
@@ -16,7 +16,7 @@ use std::os::unix::fs::FileTypeExt;
 #[rstest]
 fn test_validation() {
     let bad_completions = Args {
-        completions: Some("bash".to_string()),
+        command: Some(Commands::Completions { shell: "bash".to_string() }),
         decompose: true,
         ..Args::default()
     };

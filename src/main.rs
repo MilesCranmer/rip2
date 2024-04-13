@@ -9,18 +9,21 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let cli = args::Args::parse();
 
-    if let Some(shell) = cli.completions.as_deref() {
-        if ["nu", "nushell"].contains(&shell) {
-            let shell = Nushell;
-            generate(shell, &mut args::Args::command(), "rip", &mut io::stdout());
-        } else {
-            let shell = Shell::from_str(shell, true).unwrap_or_else(|_| {
-                eprintln!("Invalid shell specification: {}", shell);
-                std::process::exit(1);
-            });
-            generate(shell, &mut args::Args::command(), "rip", &mut io::stdout());
+    match &cli.command {
+        Some(args::Commands::Completions { shell }) => {
+            if "nu" == shell || "nushell" == shell {
+                let shell = Nushell;
+                generate(shell, &mut args::Args::command(), "rip", &mut io::stdout());
+            } else {
+                let shell = Shell::from_str(shell, true).unwrap_or_else(|_| {
+                    eprintln!("Invalid shell specification: {}", shell);
+                    std::process::exit(1);
+                });
+                generate(shell, &mut args::Args::command(), "rip", &mut io::stdout());
+            }
+            return ExitCode::SUCCESS;
         }
-        return ExitCode::SUCCESS;
+        None => {}
     }
 
     let mode = util::ProductionMode;

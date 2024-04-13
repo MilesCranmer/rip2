@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
@@ -32,10 +32,23 @@ pub struct Args {
     #[arg(short, long)]
     pub inspect: bool,
 
+    // /// Generate shell completions file
+    // /// for the specified shell
+    // #[arg(long, value_name = "SHELL")]
+    // pub completions: Option<String>,
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
     /// Generate shell completions file
     /// for the specified shell
-    #[arg(long, value_name = "SHELL")]
-    pub completions: Option<String>,
+    Completions {
+        /// The shell to generate completions for
+        #[arg(value_name = "SHELL")]
+        shell: String,
+    },
 }
 
 struct IsDefault {
@@ -56,7 +69,7 @@ impl IsDefault {
             seance: cli.seance == defaults.seance,
             unbury: cli.unbury == defaults.unbury,
             inspect: cli.inspect == defaults.inspect,
-            completions: cli.completions == defaults.completions,
+            completions: cli.command.is_none(),
         }
     }
 }
