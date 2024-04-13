@@ -16,7 +16,9 @@ use std::os::unix::fs::FileTypeExt;
 #[rstest]
 fn test_validation() {
     let bad_completions = Args {
-        command: Some(Commands::Completions { shell: "bash".to_string() }),
+        command: Some(Commands::Completions {
+            shell: "bash".to_string(),
+        }),
         decompose: true,
         ..Args::default()
     };

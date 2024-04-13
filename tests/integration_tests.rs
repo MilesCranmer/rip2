@@ -6,7 +6,7 @@ use rip2::util::TestMode;
 use rip2::{self, util};
 use rstest::rstest;
 use std::fs;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::{env, ffi, iter};
@@ -366,6 +366,38 @@ fn test_big_file() {
 
     // And not in the graveyard either
     assert!(!expected_graveyard_path.exists());
+}
+
+/// Test that running rip on the same file twice
+/// throws an error
+#[rstest]
+fn test_same_file_twice() {
+    let _env_lock = aquire_lock();
+
+    let test_env = TestEnv::new();
+    let test_data = TestData::new(&test_env, None);
+
+    let mut log = Vec::new();
+    let result = rip2::run(
+        Args {
+            targets: [test_data.path.clone(), test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+
+    // Check the first use triggered the removal:
+    assert!(!test_data.path.exists());
+
+    // Check the type of error
+    let err = result.unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("Cannot remove"));
+    assert!(err_msg.contains("no such file or directory"));
 }
 
 fn cli_runner<I, S>(args: I, cwd: Option<&PathBuf>) -> Command
