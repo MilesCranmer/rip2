@@ -78,11 +78,11 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         // If -s is also passed, push all files found by seance onto
         // the graves_to_exhume.
         if cli.seance {
-            if let Ok(f) = fs::File::open(record) {
+            if let Ok(record_file) = fs::File::open(record) {
                 let gravepath = util::join_absolute(graveyard, cwd)
                     .to_string_lossy()
                     .into_owned();
-                for grave in seance(f, gravepath) {
+                for grave in seance(record_file, gravepath) {
                     graves_to_exhume.push(grave);
                 }
             }
@@ -96,9 +96,9 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         }
 
         // Go through the graveyard and exhume all the graves
-        let f = fs::File::open(record)?;
+        let record_file = fs::File::open(record)?;
 
-        for line in lines_of_graves(f, &graves_to_exhume) {
+        for line in lines_of_graves(record_file, &graves_to_exhume) {
             let entry: RecordItem = record_entry(&line);
             let orig: PathBuf = match util::symlink_exists(entry.orig) {
                 true => util::rename_grave(entry.orig),
@@ -125,7 +125,9 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
 
         // Reopen the record and then delete lines corresponding to exhumed graves
         fs::File::open(record)
-            .and_then(|f| delete_lines_from_record(f, record, &graves_to_exhume))
+            .and_then(|record_file| {
+                delete_lines_from_record(record_file, record, &graves_to_exhume)
+            })
             .map_err(|e| {
                 Error::new(
                     e.kind(),
@@ -137,9 +139,9 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
 
     if cli.seance {
         let gravepath = util::join_absolute(graveyard, cwd);
-        let f = fs::File::open(record)
+        let record_file = fs::File::open(record)
             .map_err(|_| Error::new(ErrorKind::NotFound, "Failed to read record!"))?;
-        for grave in seance(f, gravepath.to_string_lossy()) {
+        for grave in seance(record_file, gravepath.to_string_lossy()) {
             writeln!(stream, "{}", grave.display())?;
         }
         return Ok(());
@@ -157,7 +159,15 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     Ok(())
 }
 
-fn bury_target(target: &PathBuf, record: &Path, graveyard: &PathBuf, cwd: &Path, inspect: bool, mode: &impl util::TestingMode, stream: &mut impl Write) -> Result<(), Error> {
+fn bury_target(
+    target: &PathBuf,
+    record: &Path,
+    graveyard: &PathBuf,
+    cwd: &Path,
+    inspect: bool,
+    mode: &impl util::TestingMode,
+    stream: &mut impl Write,
+) -> Result<(), Error> {
     // Check if source exists
     let metadata = fs::symlink_metadata(target).map_err(|_| {
         Error::new(
@@ -268,8 +278,8 @@ fn do_inspection(
             util::humanize_bytes(metadata.len())
         )?;
         // Read the file and print the first few lines
-        if let Ok(f) = fs::File::open(source) {
-            for line in BufReader::new(f)
+        if let Ok(source_file) = fs::File::open(source) {
+            for line in BufReader::new(source_file)
                 .lines()
                 .take(LINES_TO_INSPECT)
                 .filter_map(|line| line.ok())
@@ -294,12 +304,12 @@ fn write_log(
     record: impl AsRef<Path>,
 ) -> io::Result<()> {
     let (source, dest) = (source.as_ref(), dest.as_ref());
-    let mut f = fs::OpenOptions::new()
+    let mut record_file = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(record)?;
     writeln!(
-        f,
+        record_file,
         "{}\t{}\t{}",
         Local::now().to_rfc3339(),
         source.display(),
@@ -452,7 +462,7 @@ pub fn copy_file(
 /// As a side effect, any valid last files that are found in the record but
 /// not on the filesystem are removed from the record.
 fn get_last_bury(record: impl AsRef<Path>) -> Result<PathBuf, Error> {
-    let f = fs::File::open(record.as_ref())?;
+    let record_file = fs::File::open(record.as_ref())?;
     let contents = {
         let path_f = PathBuf::from(record.as_ref());
         fs::read_to_string(path_f)?
@@ -466,7 +476,7 @@ fn get_last_bury(record: impl AsRef<Path>) -> Result<PathBuf, Error> {
         // If it is, return the corresponding line.
         if util::symlink_exists(entry.dest) {
             if !graves_to_exhume.is_empty() {
-                delete_lines_from_record(f, record, &graves_to_exhume)?;
+                delete_lines_from_record(record_file, record, &graves_to_exhume)?;
             }
             return Ok(PathBuf::from(entry.dest));
         } else {
@@ -476,7 +486,7 @@ fn get_last_bury(record: impl AsRef<Path>) -> Result<PathBuf, Error> {
     }
 
     if !graves_to_exhume.is_empty() {
-        delete_lines_from_record(f, record, &graves_to_exhume)?;
+        delete_lines_from_record(record_file, record, &graves_to_exhume)?;
     }
     Err(Error::new(ErrorKind::NotFound, "No files in graveyard"))
 }
@@ -495,16 +505,16 @@ fn record_entry(line: &str) -> RecordItem {
 }
 
 /// Takes a vector of grave paths and returns the respective lines in the record
-fn lines_of_graves(f: fs::File, graves: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
-    BufReader::new(f)
+fn lines_of_graves(record_file: fs::File, graves: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
+    BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
         .filter(move |l| graves.iter().any(|y| y == record_entry(l).dest))
 }
 
 /// Returns an iterator over all graves in the record that are under gravepath
-fn seance<T: AsRef<str>>(f: fs::File, gravepath: T) -> impl Iterator<Item = PathBuf> {
-    BufReader::new(f)
+fn seance<T: AsRef<str>>(record_file: fs::File, gravepath: T) -> impl Iterator<Item = PathBuf> {
+    BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
         .map(|l| PathBuf::from(record_entry(&l).dest))
@@ -513,7 +523,7 @@ fn seance<T: AsRef<str>>(f: fs::File, gravepath: T) -> impl Iterator<Item = Path
 
 /// Takes a vector of grave paths and removes the respective lines from the record
 fn delete_lines_from_record(
-    current_record: fs::File,
+    record_file: fs::File,
     record: impl AsRef<Path>,
     graves: &[PathBuf],
 ) -> Result<(), Error> {
@@ -521,17 +531,14 @@ fn delete_lines_from_record(
     // Get the lines to write back to the record, which is every line except
     // the ones matching the exhumed graves.  Store them in a vector
     // since we'll be overwriting the record in-place.
-    let lines_to_write: Vec<String> = BufReader::new(current_record)
+    let lines_to_write: Vec<String> = BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
         .filter(|l| !graves.iter().any(|y| y == record_entry(l).dest))
         .collect();
-    let mut f = fs::File::create(record)?;
-    // if let Err(err) = f {
-    //     return Err(err);
-    // }
+    let mut mutable_record_file = fs::File::create(record)?;
     for line in lines_to_write {
-        writeln!(f, "{}", line)?;
+        writeln!(mutable_record_file, "{}", line)?;
     }
     Ok(())
 }
