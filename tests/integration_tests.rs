@@ -5,7 +5,7 @@ use rip2::args::Args;
 use rip2::util::TestMode;
 use rip2::{self, util};
 use rstest::rstest;
-use std::fs::{self, File};
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -62,7 +62,7 @@ impl TestData {
 
         let taken_filename = filename.unwrap_or("test_file.txt");
         let path = test_env.src.join(taken_filename);
-        let mut file = File::create(&path).unwrap();
+        let mut file = fs::File::create(&path).unwrap();
         file.write_all(data.as_bytes()).unwrap();
 
         TestData { data, path }
@@ -343,7 +343,7 @@ fn test_big_file() {
 
     // test_env.src
     let big_file_path = test_env.src.join("big_file.txt");
-    let file = File::create(&big_file_path).unwrap();
+    let file = fs::File::create(&big_file_path).unwrap();
     file.set_len(size).unwrap();
 
     let expected_graveyard_path =
