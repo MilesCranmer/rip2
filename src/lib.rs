@@ -13,7 +13,7 @@ pub mod util;
 use args::Args;
 use record::{Record, RecordItem};
 
-const GRAVEYARD: &str = "/tmp/graveyard";
+const DEFAULT_GRAVEYARD: &str = "/tmp/graveyard";
 const LINES_TO_INSPECT: usize = 6;
 const FILES_TO_INSPECT: usize = 6;
 pub const BIG_FILE_THRESHOLD: u64 = 500000000; // 500 MB
@@ -39,7 +39,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
             env.push_str("graveyard");
             PathBuf::from(env)
         } else {
-            PathBuf::from(format!("{}-{}", GRAVEYARD, util::get_user()))
+            PathBuf::from(format!("{}-{}", DEFAULT_GRAVEYARD, util::get_user()))
         }
     };
 
@@ -59,7 +59,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     }
 
     // Stores the deleted files
-    let record = record::Record::new(graveyard);
+    let record = Record::new(graveyard);
     let cwd = &env::current_dir()?;
 
     if let Some(mut graves_to_exhume) = cli.unbury {
