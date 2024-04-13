@@ -19,7 +19,6 @@ clap = { version = "4.4", features = ["derive"] }
 clap_complete = "4.4"
 clap_complete_nushell = "4.4"
 walkdir = "1"
-error-chain = "0.12"
 chrono = "0.4.33"
 
 [dev-dependencies]
