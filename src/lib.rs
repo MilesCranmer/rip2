@@ -508,7 +508,7 @@ fn lines_of_graves(record_file: fs::File, graves: &[PathBuf]) -> impl Iterator<I
     BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
-        .filter(move |l| graves.iter().any(|y| y == record_entry(l).dest))
+        .filter(move |line| graves.iter().any(|y| y == record_entry(line).dest))
 }
 
 /// Returns an iterator over all graves in the record that are under gravepath
@@ -516,7 +516,7 @@ fn seance<T: AsRef<str>>(record_file: fs::File, gravepath: T) -> impl Iterator<I
     BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
-        .map(|l| PathBuf::from(record_entry(&l).dest))
+        .map(|line| PathBuf::from(record_entry(&line).dest))
         .filter(move |d| d.starts_with(gravepath.as_ref()))
 }
 
@@ -533,7 +533,7 @@ fn delete_lines_from_record(
     let lines_to_write: Vec<String> = BufReader::new(record_file)
         .lines()
         .map_while(Result::ok)
-        .filter(|l| !graves.iter().any(|y| y == record_entry(l).dest))
+        .filter(|line| !graves.iter().any(|y| y == record_entry(line).dest))
         .collect();
     let mut mutable_record_file = fs::File::create(record)?;
     for line in lines_to_write {
