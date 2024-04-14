@@ -184,6 +184,9 @@ fn bury_target(
             return Ok(());
         } else {
             writeln!(stream, "Skipping {}", source.display())?;
+            // TODO: In the original code, this was a hard return from the entire
+            // method (i.e., `run`). I think it should just be a return from the bury
+            // (meaning a `continue` in the original code's loop). But I'm not sure.
             return Ok(());
         }
     }
