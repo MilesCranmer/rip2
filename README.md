@@ -32,22 +32,23 @@ No binaries are made available at this time.
 ## Usage
 
 ```text
-Usage: rip [OPTIONS] [TARGETS]...
+Usage: rip [OPTIONS] [TARGETS]... [COMMAND]
+
+Commands:
+  completions  Generate shell completions file for the specified shell
+  help         Print this message or the help of the given subcommand(s)
 
 Arguments:
-  [TARGETS]...  File or directory to remove or unbury
-
-Flags:
-  -u, --unbury                 Restore the specified files or the last file if none are specified
-  -s, --seance                 Prints files that were deleted in the current working directory
-  -i, --inspect                Print some info about TARGET before burying
-  -d, --decompose              Permanently deletes the graveyard
-  -h, --help                   Print help
-  -V, --version                Print version
+  [TARGETS]...  File or directory to remove
 
 Options:
       --graveyard <GRAVEYARD>  Directory where deleted files rest
-      --completions <SHELL>    Generate shell completions file for the specified shell
+  -d, --decompose              Permanently deletes the graveyard
+  -s, --seance                 Prints files that were deleted in the current working directory
+  -u, --unbury                 Restore the specified files or the last file if none are specified
+  -i, --inspect                Print some info about TARGET before burying
+  -h, --help                   Print help
+  -V, --version                Print version
 ```
 
 Basic usage -- easier than rm
