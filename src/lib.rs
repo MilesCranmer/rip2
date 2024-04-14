@@ -7,9 +7,9 @@ use std::{env, fs};
 use walkdir::WalkDir;
 
 pub mod args;
+pub mod completions;
 pub mod record;
 pub mod util;
-pub mod completions;
 
 use args::Args;
 use record::{Record, RecordItem};
