@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/MilesCranmer/rip2/compare/v0.2.1...v1.0.0) (2024-04-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* use subcommands for shell completions
+
+### Features
+
+* use subcommands for shell completions ([adbb270](https://github.com/MilesCranmer/rip2/commit/adbb270190a80a33515b091d50f8c0455029c9c6))
+
+
+### Bug Fixes
+
+* correct output of shell completions ([67ee0df](https://github.com/MilesCranmer/rip2/commit/67ee0dfb44ae518c68113c857aea093bbf2de62b))
+
 ## [0.2.1](https://github.com/MilesCranmer/rip2/compare/v0.2.0...v0.2.1) (2024-04-11)
 
 
