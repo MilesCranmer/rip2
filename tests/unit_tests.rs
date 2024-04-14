@@ -1,6 +1,6 @@
 use rip2::args::{validate_args, Args, Commands};
+use rip2::completions;
 use rip2::util::TestMode;
-use rip2::{copy_file, move_target};
 use rstest::rstest;
 use std::fs;
 use std::io::Cursor;
@@ -75,9 +75,9 @@ fn test_filetypes(
     let mode = TestMode;
 
     if copy {
-        copy_file(&source_path, &dest_path, &mode, &mut log).unwrap();
+        rip2::copy_file(&source_path, &dest_path, &mode, &mut log).unwrap();
     } else {
-        move_target(&source_path, &dest_path, &mode, &mut log).unwrap();
+        rip2::move_target(&source_path, &dest_path, &mode, &mut log).unwrap();
     }
 
     let log_s = String::from_utf8(log).unwrap();
@@ -143,4 +143,40 @@ fn test_prompt_read(
     let input = Cursor::new(key.0);
     let result = rip2::util::process_in_stream(input);
     assert_eq!(result, key.1)
+}
+
+#[rstest]
+fn test_completions(
+    #[values("bash", "elvish", "fish", "powershell", "zsh", "nushell", "fake")] shell: &str,
+) {
+    let mut output = Vec::new();
+    let result = completions::generate_shell_completions(shell, &mut output);
+    let output_s = String::from_utf8(output).unwrap();
+    match shell {
+        "bash" => {
+            assert!(output_s.contains("complete -F"));
+        }
+        "elvish" => {
+            assert!(output_s.contains("set edit:completion:arg-completer[rip]"));
+        }
+        "fish" => {
+            assert!(output_s.contains("complete -c"));
+        }
+        "powershell" => {
+            assert!(output_s.contains("Register-ArgumentCompleter"));
+        }
+        "zsh" => {
+            assert!(output_s.contains("compdef"));
+        }
+        "nushell" => {
+            assert!(output_s.contains("export extern"));
+        }
+        "fake" => {
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("Invalid shell specification: fake"));
+            assert!(err_msg.contains("Available shells: bash, elvish, fish, powershell, zsh, nushell"));
+        }
+        _ => {}
+    }
 }
