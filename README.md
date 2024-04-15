@@ -12,7 +12,7 @@
 
 `rip` is a rust-based `rm` with a focus on safety, ergonomics, and performance.  It favors a simple interface, and does *not* implement the xdg-trash spec or attempt to achieve the same goals.
 
-Deleted files get sent to the graveyard 🪦 (`/tmp/graveyard-$USER` by default, see [notes](#notes) on changing this) under their absolute path, giving you a chance to recover them 🧟. No data is overwritten. If files that share the same path are deleted, they will be renamed as numbered backups.
+Deleted files get sent to the graveyard 🪦 (Usually `/tmp/graveyard-$USER`, see [notes](#notes) on changing this) under their absolute path, giving you a chance to recover them 🧟. No data is overwritten. If files that share the same path are deleted, they will be renamed as numbered backups.
 
 This version, "rip2", is a fork-of-a-fork:
 
@@ -134,7 +134,7 @@ alias rm="echo Use 'rip' instead of rm."
 
 **Graveyard location.**
 
-If you have `$XDG_DATA_HOME` environment variable set, `rip` will use `$XDG_DATA_HOME/graveyard` instead of the `/tmp/graveyard-$USER`.
+If you have `$XDG_DATA_HOME` environment variable set, `rip` will use `$XDG_DATA_HOME/graveyard` instead of the `$TMPDIR/graveyard-$USER`.
 
 If you want to put the graveyard somewhere else (like `~/.local/share/Trash`), you have two options, in order of precedence:
 

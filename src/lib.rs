@@ -441,12 +441,5 @@ pub fn copy_file(
 
 fn default_graveyard() -> PathBuf {
     let user = util::get_user();
-
-    #[cfg(unix)]
-    let base_path = "/tmp/graveyard";
-
-    #[cfg(target_os = "windows")]
-    let base_path = env::var("TEMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string());
-
-    PathBuf::from(format!("{}-{}", base_path, user))
+    env::temp_dir().join(format!("graveyard-{}", user))
 }
