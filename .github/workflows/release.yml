@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CRATE_NAME: rip2
+
+jobs:
+  release:
+    name: release-${{ matrix.platform.platform_name }} 
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # From https://github.com/houseabsolute/precious/blob/master/.github/workflows/ci.yml
+          - os_name: FreeBSD-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-freebsd
+            bin: rip
+            name: rip-FreeBSD-x86_64.tar.gz
+            skip_tests: true
+          - os_name: Linux-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-linux-musl
+            bin: rip
+            name: rip-Linux-x86_64-musl.tar.gz
+          - os_name: Linux-aarch64
+            os: ubuntu-20.04
+            target: aarch64-unknown-linux-musl
+            bin: rip
+            name: rip-Linux-aarch64-musl.tar.gz
+          - os_name: Linux-arm
+            os: ubuntu-20.04
+            target: arm-unknown-linux-musleabi
+            bin: rip
+            name: rip-Linux-arm-musl.tar.gz
+          - os_name: Linux-i686
+            os: ubuntu-20.04
+            target: i686-unknown-linux-musl
+            bin: rip
+            name: rip-Linux-i686-musl.tar.gz
+            skip_tests: true
+          - os_name: Linux-powerpc
+            os: ubuntu-20.04
+            target: powerpc-unknown-linux-gnu
+            bin: rip
+            name: rip-Linux-powerpc-gnu.tar.gz
+            skip_tests: true
+          - os_name: Linux-powerpc64
+            os: ubuntu-20.04
+            target: powerpc64-unknown-linux-gnu
+            bin: rip
+            name: rip-Linux-powerpc64-gnu.tar.gz
+            skip_tests: true
+          - os_name: Linux-powerpc64le
+            os: ubuntu-20.04
+            target: powerpc64le-unknown-linux-gnu
+            bin: rip
+            name: rip-Linux-powerpc64le.tar.gz
+            skip_tests: true
+          - os_name: Linux-riscv64
+            os: ubuntu-20.04
+            target: riscv64gc-unknown-linux-gnu
+            bin: rip
+            name: rip-Linux-riscv64gc-gnu.tar.gz
+          - os_name: Linux-s390x
+            os: ubuntu-20.04
+            target: s390x-unknown-linux-gnu
+            bin: rip
+            name: rip-Linux-s390x-gnu.tar.gz
+            skip_tests: true
+          - os_name: NetBSD-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-netbsd
+            bin: rip
+            name: rip-NetBSD-x86_64.tar.gz
+            skip_tests: true
+          - os_name: Windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin: rip.exe
+            name: rip-Windows-aarch64.zip
+            skip_tests: true
+          - os_name: Windows-i686
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            bin: rip.exe
+            name: rip-Windows-i686.zip
+            skip_tests: true
+          - os_name: Windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: rip.exe
+            name: rip-Windows-x86_64.zip
+          - os_name: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
+            bin: rip
+            name: rip-Darwin-x86_64.tar.gz
+          - os_name: macOS-aarch64
+            os: macOS-latest
+            target: aarch64-apple-darwin
+            bin: rip
+            name: rip-Darwin-aarch64.tar.gz
+            skip_tests: true
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install musl-tools on Linux
+        run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools
+        if: contains(matrix.platform.name, 'musl')
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+            command: "build"
+            target: ${{ matrix.platform.target }}
+            toolchain: ${{ matrix.toolchain }}
+            args: "--locked --release"
+            strip: true
+      - name: Run tests
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+            command: "test"
+            target: ${{ matrix.platform.target }}
+            toolchain: ${{ matrix.toolchain }}
+            args: "--locked --release"
+        if: ${{ !matrix.platform.skip_tests }}
+      - name: Package as archive
+        shell: bash
+        run: |
+            cd target/${{ matrix.platform.target }}/release
+            if [[ "${{ matrix.platform.os }}" == "windows-latest" ]]; then
+              7z a ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+            else
+              tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+            fi
+            cd -
+      - name: Publish release artifacts to GitHub release
+        uses: svenstaro/upload-release-action@v2
+        if: matrix.toolchain == 'stable' && startsWith(github.ref, 'refs/tags/v')
+        with:
+          file_glob: true
+          file: ${{ matrix.platform.name }}
+          tag: ${{ github.ref }}
+          overwrite: true
