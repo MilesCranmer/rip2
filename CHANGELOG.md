@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/MilesCranmer/rip2/compare/v0.5.0...v0.5.1) (2024-04-15)
+
+
+### Features
+
+* add seance option to graveyard subcommand ([ad85c0f](https://github.com/MilesCranmer/rip2/commit/ad85c0fd517f476bf4d141a8a1c30e173c43152d))
+* add subcommand to get graveyard path ([448caf7](https://github.com/MilesCranmer/rip2/commit/448caf7b6c6c86bd8fa02783d4b7e70064725d11))
+* use colors in help menus ([261e69d](https://github.com/MilesCranmer/rip2/commit/261e69d7d3671b5b131ac8458eb10c462098ea34))
+
 ## [0.5.0](https://github.com/MilesCranmer/rip2/compare/v0.4.0...v0.5.0) (2024-04-15)
 
 
