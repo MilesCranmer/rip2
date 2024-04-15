@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/MilesCranmer/rip2/compare/v0.4.0...v0.5.0) (2024-04-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* use `env::temp_dir` for graveyard path ([#22](https://github.com/MilesCranmer/rip2/issues/22))
+
+### Features
+
+* use `env::temp_dir` for graveyard path ([#22](https://github.com/MilesCranmer/rip2/issues/22)) ([e3eebff](https://github.com/MilesCranmer/rip2/commit/e3eebffc941aa8540b73214d3e4bf5960a4cd254))
+
 ## [0.4.0](https://github.com/MilesCranmer/rip2/compare/v0.3.0...v0.4.0) (2024-04-15)
 
 
