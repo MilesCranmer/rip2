@@ -24,9 +24,9 @@ fn main() -> ExitCode {
             if *seance {
                 let cwd = &env::current_dir().unwrap();
                 let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd).unwrap());
-                println!("{}", gravepath.display());
+                print!("{}", gravepath.display());
             } else {
-                println!("{}", graveyard.display());
+                print!("{}", graveyard.display());
             }
         }
         None => {
