@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/MilesCranmer/rip2/compare/v0.6.0...v0.6.1) (2024-04-22)
+
+
+### Bug Fixes
+
+* avoid printing newline for graveyard subcommand ([f475bae](https://github.com/MilesCranmer/rip2/commit/f475bae3c7852b32ceb8b431ea6ad5cd22866dd9))
+
 ## [0.6.0](https://github.com/MilesCranmer/rip2/compare/v0.5.2...v0.6.0) (2024-04-22)
 
 
