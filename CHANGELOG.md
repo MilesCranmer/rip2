@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/MilesCranmer/rip2/compare/v0.6.1...v0.7.0) (2024-04-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* store header in record
+
+### Features
+
+* store header in record ([452c476](https://github.com/MilesCranmer/rip2/commit/452c476c83a4587dae9b447c7f4a3ebb2c55cf0d))
+
 ## [0.6.1](https://github.com/MilesCranmer/rip2/compare/v0.6.0...v0.6.1) (2024-04-22)
 
 
