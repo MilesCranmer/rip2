@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.9.0](https://github.com/MilesCranmer/rip2/compare/rip2-v0.8.0...rip2-v0.9.0) (2024-06-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* output column headers during seance
+* store header in record
+* switch from walkdir to jwalk for parallelism
+* switch display to binary prefix
+* use `env::temp_dir` for graveyard path ([#22](https://github.com/MilesCranmer/rip2/issues/22))
+* do not record permanent deletions in record
+* use dunce canonicalization for windows compat
+* use subcommands for shell completions
+
+### Features
+
+* `fs_extra` to get dir sizes ([ceda4a9](https://github.com/MilesCranmer/rip2/commit/ceda4a974a68d1ef48cd58322e49118f507ba076))
+* add preliminary windows support ([51bcdf3](https://github.com/MilesCranmer/rip2/commit/51bcdf3e0143858b0e17ea1a31fbaa6b3a90683c))
+* add seance option to graveyard subcommand ([ad85c0f](https://github.com/MilesCranmer/rip2/commit/ad85c0fd517f476bf4d141a8a1c30e173c43152d))
+* add subcommand to get graveyard path ([448caf7](https://github.com/MilesCranmer/rip2/commit/448caf7b6c6c86bd8fa02783d4b7e70064725d11))
+* better error when no record found ([2dcc4af](https://github.com/MilesCranmer/rip2/commit/2dcc4af2babe4cd2df3dcea2b75169e603fabeba))
+* display deletion time during seance ([19dbe0a](https://github.com/MilesCranmer/rip2/commit/19dbe0a3bb61b62727cc5a4ab98913feb3c01512))
+* do not record permanent deletions in record ([a77e027](https://github.com/MilesCranmer/rip2/commit/a77e027c383af922fec1eeda4eb855b5f82d3bbf))
+* more readable logging for windows ([f494d9e](https://github.com/MilesCranmer/rip2/commit/f494d9e3b45210b74ab55a9efc6792e321912a43))
+* output column headers during seance ([d29bdd5](https://github.com/MilesCranmer/rip2/commit/d29bdd51e93e8cccacbfc12e5e99608cf1c07314))
+* quit prompt read if given invalid char ([51b0dcf](https://github.com/MilesCranmer/rip2/commit/51b0dcfc4fddca4e799895053d2b68f913ca6371))
+* sort entries in inspection mode ([7686ea3](https://github.com/MilesCranmer/rip2/commit/7686ea362f631ed8a877963c56e1eccbb24172c6))
+* store header in record ([452c476](https://github.com/MilesCranmer/rip2/commit/452c476c83a4587dae9b447c7f4a3ebb2c55cf0d))
+* switch display to binary prefix ([8fd45f1](https://github.com/MilesCranmer/rip2/commit/8fd45f1e0eb95a217756363a0e3dfda99db7dd21))
+* switch from walkdir to jwalk for parallelism ([c1d7d09](https://github.com/MilesCranmer/rip2/commit/c1d7d09df9131cc52b19905dc8b8c0718d5a36c9))
+* test feat ([11656a2](https://github.com/MilesCranmer/rip2/commit/11656a2c3216fed0dc6b3a4566641d8c571bf107))
+* use `env::temp_dir` for graveyard path ([#22](https://github.com/MilesCranmer/rip2/issues/22)) ([e3eebff](https://github.com/MilesCranmer/rip2/commit/e3eebffc941aa8540b73214d3e4bf5960a4cd254))
+* use colors in help menus ([261e69d](https://github.com/MilesCranmer/rip2/commit/261e69d7d3671b5b131ac8458eb10c462098ea34))
+* use subcommands for shell completions ([adbb270](https://github.com/MilesCranmer/rip2/commit/adbb270190a80a33515b091d50f8c0455029c9c6))
+
+
+### Bug Fixes
+
+* avoid printing newline for graveyard subcommand ([bc8315d](https://github.com/MilesCranmer/rip2/commit/bc8315d1f096a969999f1c1f1d8db8295e992027))
+* correct behavior for \n stdin ([5c60870](https://github.com/MilesCranmer/rip2/commit/5c608704a16ff36d143a665d2789da3bc67a692f))
+* correct behavior for non-input stdin ([b4035a4](https://github.com/MilesCranmer/rip2/commit/b4035a4c240a839cfe3c25607fef07edf2463912))
+* correct output of shell completions ([67ee0df](https://github.com/MilesCranmer/rip2/commit/67ee0dfb44ae518c68113c857aea093bbf2de62b))
+* correct symlink to symlink_file on windows ([d1ca9ca](https://github.com/MilesCranmer/rip2/commit/d1ca9ca27e35a9dd45c40d31785d76d18820a675))
+* flush stream even if not stdout ([09504c8](https://github.com/MilesCranmer/rip2/commit/09504c8b8d16d07aa973ace093b80485a87ee32e))
+* **permissions:** set graveyard permissions to 700 ([e61cfc9](https://github.com/MilesCranmer/rip2/commit/e61cfc9f46a9eea5ea304732fa744a3bae2c929e))
+* Restored --unbury functionality ([ceb5ffb](https://github.com/MilesCranmer/rip2/commit/ceb5ffb770a8931aebe00f091ce665d4f748148b))
+* seance paths on windows ([9c0d2d5](https://github.com/MilesCranmer/rip2/commit/9c0d2d516fa4146dcb2971a6482b75dfd7f23d59))
+* use dunce canonicalization for windows compat ([0d3dc2a](https://github.com/MilesCranmer/rip2/commit/0d3dc2abe6086f7c8460c7552a9cc610ed07bb49))
+* workaround for device paths on windows ([6624147](https://github.com/MilesCranmer/rip2/commit/66241479e0f95793b167dc186175e533e4e351c0))
+
+
+### Reverts
+
+* feat!: switch from walkdir to jwalk for parallelism ([efaa396](https://github.com/MilesCranmer/rip2/commit/efaa396054c0e0f6b12dabb01147a4481db298f8))
+
 ## [0.8.0](https://github.com/MilesCranmer/rip2/compare/v0.7.0...v0.8.0) (2024-05-07)
 
 
