@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/MilesCranmer/rip2/compare/v0.8.3...v0.9.0) (2024-10-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* const generic parameter for Record to disable file lock
+* create file locking via fs4
+
+### Features
+
+* const generic parameter for Record to disable file lock ([c61a7d8](https://github.com/MilesCranmer/rip2/commit/c61a7d85e2d3b61e6ec707c9a117e5fb79a14ea2))
+* create file locking via fs4 ([8e0bd96](https://github.com/MilesCranmer/rip2/commit/8e0bd962cb707dee3e7a4854b5406fe53a21ec73))
+
+
+### Bug Fixes
+
+* be more careful about locking ([88cb8a0](https://github.com/MilesCranmer/rip2/commit/88cb8a01596e3ebad31fa995ce3897fad408a8a6))
+* disable fs4 on windows ([fbf8ed5](https://github.com/MilesCranmer/rip2/commit/fbf8ed57feed7ab9ebda20db7cbb9378cd2bfff3))
+
 ## [0.8.3](https://github.com/MilesCranmer/rip2/compare/v0.8.2...v0.8.3) (2024-10-22)
 
 
