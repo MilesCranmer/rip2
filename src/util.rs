@@ -80,10 +80,7 @@ impl TestingMode for TestMode {
 
 pub fn allow_rename() -> bool {
     // Test behavior to skip simple rename
-    env::var("__RIP_ALLOW_RENAME")
-        .unwrap_or("true".to_string())
-        .parse::<bool>()
-        .unwrap()
+    env::var_os("__RIP_ALLOW_RENAME").map_or(true, |v| v != "false")
 }
 
 /// Prompt for user input, returning True if the first character is 'y' or 'Y'

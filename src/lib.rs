@@ -72,6 +72,8 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
             }
         }
 
+        let allow_rename = util::allow_rename();
+
         // Go through the graveyard and exhume all the graves
         for line in record.lines_of_graves(&graves_to_exhume) {
             let entry = RecordItem::new(&line);
@@ -79,7 +81,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
                 true => util::rename_grave(&entry.orig),
                 false => PathBuf::from(&entry.orig),
             };
-            move_target(&entry.dest, &orig, &mode, stream).map_err(|e| {
+            move_target(&entry.dest, &orig, allow_rename, &mode, stream).map_err(|e| {
                 Error::new(
                     e.kind(),
                     format!(
@@ -111,20 +113,32 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
     } else if cli.targets.is_empty() {
         Args::command().print_help()?;
     } else {
+        let allow_rename = util::allow_rename();
         for target in cli.targets {
-            bury_target(&target, graveyard, &record, cwd, cli.inspect, &mode, stream)?;
+            bury_target(
+                &target,
+                graveyard,
+                &record,
+                cwd,
+                cli.inspect,
+                allow_rename,
+                &mode,
+                stream,
+            )?;
         }
     }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bury_target<const FILE_LOCK: bool>(
     target: &PathBuf,
     graveyard: &PathBuf,
     record: &Record<FILE_LOCK>,
     cwd: &Path,
     inspect: bool,
+    allow_rename: bool,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
 ) -> Result<(), Error> {
@@ -175,7 +189,7 @@ fn bury_target<const FILE_LOCK: bool>(
             }
         };
 
-        let moved = move_target(source, dest, mode, stream).map_err(|e| {
+        let moved = move_target(source, dest, allow_rename, mode, stream).map_err(|e| {
             fs::remove_dir_all(dest).ok();
             Error::new(e.kind(), "Failed to bury file")
         })?;
@@ -257,12 +271,13 @@ fn should_we_bury_this(
 pub fn move_target(
     target: &Path,
     dest: &Path,
+    allow_rename: bool,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
 ) -> Result<bool, Error> {
     // Try a simple rename, which will only work within the same mount point.
     // Trying to rename across filesystems will throw errno 18.
-    if util::allow_rename() && fs::rename(target, dest).is_ok() {
+    if allow_rename && fs::rename(target, dest).is_ok() {
         return Ok(true);
     }
 

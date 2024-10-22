@@ -104,7 +104,7 @@ fn test_filetypes(
     if copy {
         rip2::copy_file(&source_path, &dest_path, &mode, &mut log).unwrap();
     } else {
-        rip2::move_target(&source_path, &dest_path, &mode, &mut log).unwrap();
+        rip2::move_target(&source_path, &dest_path, true, &mode, &mut log).unwrap();
     }
 
     let log_s = String::from_utf8(log).unwrap();
