@@ -40,6 +40,14 @@ This package is supported on Linux, macOS, and Windows.
 $ cargo install --locked rip2
 ```
 
+### Homebrew
+
+On macOS or Linux with Homebrew installed:
+
+```bash
+$ brew install rip2
+```
+
 ### Binaries
 
 Binary releases for different architectures and operating systems are
