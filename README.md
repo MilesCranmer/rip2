@@ -123,6 +123,12 @@ zypper ar -f obs://utilities
 zypper in rip2
 ```
 
+### Termux
+
+```bash
+pkg install rip2
+```
+
 </details>
 
 ## Usage
