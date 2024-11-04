@@ -55,9 +55,11 @@ made available on the GitHub releases page: https://github.com/MilesCranmer/rip2
 
 To install, simply open the archive and move the binary somewhere you can run it.
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/rip2.svg?columns=2)](https://repology.org/project/rip2/versions)
+
 ### Nix
 
-This repository is flake-compatible, and backwards-compatible with non-flake systems. Just run the following to test it out:
+This repository is also flake-compatible, and backwards-compatible with non-flake systems. Just run the following to test it out:
 
 ```bash
 nix develop "github:MilesCranmer/rip2"
@@ -65,7 +67,7 @@ nix develop "github:MilesCranmer/rip2"
 
 ### Other
 
-<details><summary>A few other package managers have contributed support:</summary>
+<details><summary>A few other package repositories have contributed support:</summary>
 
 
 ### Additional Nix options
@@ -121,12 +123,6 @@ nix shell "github:MilesCranmer/rip2"
 ```
 zypper ar -f obs://utilities
 zypper in rip2
-```
-
-### Termux
-
-```bash
-pkg install rip2
 ```
 
 </details>
