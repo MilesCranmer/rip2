@@ -77,6 +77,13 @@ jobs:
         run: ./result/bin/rip --version
       - name: Test default app
         run: nix run . -- --help
+      - name: Test shell completions
+        run: |
+          # pre-fetch bash-completion then get its path in the store
+          nix build nixpkgs#bash-completion
+          export BASH_COMPLETION_PKG=$(nix path-info nixpkgs#bash-completion)
+          # use bashInteractive from nixpkgs because default bash is too old for bash-completion on macOS
+          nix shell . nixpkgs#expect nixpkgs#bash-completion nixpkgs#bashInteractive -c tests/shell_completions.exp
 
   release-please:
     name: Execute release chores

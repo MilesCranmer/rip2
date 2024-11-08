@@ -18,6 +18,13 @@
         naersk' = pkgs.callPackage naersk {};
         rip2 = naersk'.buildPackage {
           src = ./.;
+          nativeBuildInputs = [ pkgs.installShellFiles ];
+          postInstall = ''
+           installShellCompletion --cmd rip \
+             --bash <($out/bin/rip completions bash) \
+             --fish <($out/bin/rip completions fish) \
+             --zsh <($out/bin/rip completions zsh)
+          '';
         };
       in
       with pkgs;

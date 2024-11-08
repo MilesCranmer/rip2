@@ -1,0 +1,56 @@
+#!/usr/bin/env expect
+
+# Script based on https://stackoverflow.com/a/42085887
+# If you are unfamiliar with expect scripts, this guide might be helpful:
+# https://gist.github.com/ksafranski/6294378
+
+# Disable debug options
+log_user 0
+exp_internal 0
+
+set prompt_success {0 /@}
+set cmd "rip "
+set bash_completion_pkg $::env(BASH_COMPLETION_PKG)
+
+proc line_count {str} {
+    regexp -all \n $str
+}
+
+# start bash with no startup files for clean env
+spawn env INPUTRC=/dev/null {PS1=$? /@} bash --norc --noprofile
+expect $prompt_success
+# set some readline variables for consistent completion output
+send "bind 'set show-all-if-ambiguous on'\r"
+expect $prompt_success
+send "bind 'set bell-style none'\r"
+expect $prompt_success
+send "bind 'set completion-query-items -1'\r"
+expect $prompt_success
+send "bind 'set page-completions off'\r"
+expect $prompt_success
+send "bind 'set completion-display-width 0'\r"
+expect $prompt_success
+
+# Source bash-completion's basic script which should load rip's completion (when first tab is pressed)
+send "source $bash_completion_pkg/etc/profile.d/bash_completion.sh\r"
+expect $prompt_success
+
+# Enter temporary folder to avoid listing files if completion is not loaded properly
+set tmp_dir [exec "mktemp" "-d"]
+send "cd $tmp_dir\r"
+expect $prompt_success
+
+# run the completion
+send "$cmd\t"
+expect -re "^$cmd\r\n(.*)\r\n$prompt_success$cmd" {
+    puts "Completions:\n$expect_out(1,string)\n"
+    set completion_count [line_count $expect_out(1,string)]
+    puts "Found $completion_count completions, expecting at least 10"
+    if {$completion_count > 10} {
+        exit 0
+    }
+}
+
+puts "Failed to generate completions"
+
+exit 1
