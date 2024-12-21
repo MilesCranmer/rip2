@@ -21,7 +21,7 @@ lazy_static! {
 }
 
 fn aquire_lock() -> MutexGuard<'static, ()> {
-    GLOBAL_LOCK.lock().unwrap()
+    GLOBAL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 struct TestEnv {
