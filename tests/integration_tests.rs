@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use predicates::str::is_match;
+use predicates::Predicate;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rip2::args::Args;
@@ -1078,4 +1079,61 @@ fn _test_concurrent_writes<const FILE_LOCK: bool>() {
     } else {
         assert!(corrupted_lines > 0);
     }
+}
+
+#[rstest]
+fn test_no_header() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+    let record_file = test_env.graveyard.join(".record");
+    fs::write(
+        &record_file,
+        b"2024-12-21T16:47:21.922660-05:00\toldpath\tnewpath\n",
+    )
+    .unwrap();
+
+    // Attempt to run `seance`, which will parse `.record`. We expect it to fail with
+    // a helpful error message.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+
+    // Check that we got the right error
+    let err = result.expect_err("Expected an error due to missing header");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // Ensure the error message alerts the user to the old format
+    let err_msg = err.to_string();
+    assert!(
+        is_match(r"Invalid record file header at .+:\s+Expected: 'Time\tOriginal\tDestination'\s+Got:\s+'.*'")
+            .unwrap()
+            .eval(&err_msg),
+        "Unexpected error message: {err_msg}"
+    );
+
+    // Now, add the header to the top of the file and try again
+    let header = "Time\tOriginal\tDestination\n";
+    let existing_content = fs::read_to_string(&record_file).unwrap();
+    fs::write(&record_file, format!("{}{}", header, existing_content)).unwrap();
+
+    // Try running seance again - it should work this time
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
 }
