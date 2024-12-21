@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{DateTime, Local};
 use fs4::fs_std::FileExt;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -27,6 +27,45 @@ impl RecordItem {
             orig: PathBuf::from(orig),
             dest: PathBuf::from(dest),
         }
+    }
+
+    /// Parse the timestamp in this record, which could be in either RFC3339 format (from rip2)
+    /// or the old rip format --- in which case we return a helpful error.
+    fn parse_timestamp(&self) -> Result<DateTime<Local>, Error> {
+        // Try parsing as RFC3339 first
+        if let Ok(dt) = DateTime::parse_from_rfc3339(&self.time) {
+            return Ok(dt.with_timezone(&Local));
+        }
+
+        // Roughly check if it matches the old rip format (e.g., "Sun Dec  1 02:15:56 2024")
+        let is_old_format = self.time.split_whitespace().count() == 5
+            && self
+                .time
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c.is_whitespace() || c == ':');
+        if is_old_format {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "Found timestamp '{}' from old rip format. \
+                    You will need to delete the `.record` file \
+                    and start over with rip2. \
+                    You can see the path with `rip graveyard`.",
+                    self.time
+                ),
+            ))
+        } else {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Failed to parse time '{}' as RFC3339 format", self.time),
+            ))
+        }
+    }
+
+    /// Format this record's timestamp for display in the seance output
+    pub fn format_time_for_display(&self) -> Result<String, Error> {
+        self.parse_timestamp()
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
     }
 }
 
