@@ -17,7 +17,7 @@ autobins = false
 
 [dependencies]
 anstyle = "1.0.6"
-chrono = "0.4.33"
+chrono = "0.4.39"
 clap = { version = "4.4", features = ["derive"] }
 clap_complete = "4.4"
 clap_complete_nushell = "4.4"
