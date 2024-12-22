@@ -1137,3 +1137,61 @@ fn test_no_header() {
     )
     .unwrap();
 }
+
+#[rstest]
+fn test_legacy_date_format() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+
+    // Create source and destination paths with actual files
+    let src_dir = test_env.src.join("nested").join("dir");
+    fs::create_dir_all(&src_dir).unwrap();
+    let src_path = src_dir.join("testfile.txt");
+    fs::write(&src_path, "").unwrap();
+
+    // Create destination path in graveyard mirroring source structure
+    let dest_path =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&src_path).unwrap());
+    fs::create_dir_all(dest_path.parent().unwrap()).unwrap();
+    // Put the actual contents here:
+    fs::write(&dest_path, "test content").unwrap();
+    // And delete the src file
+    fs::remove_file(&src_path).unwrap();
+
+    // Write record file with old format timestamp but new header
+    let record_file = test_env.graveyard.join(".record");
+    fs::write(
+        record_file,
+        format!(
+            "Time\tOriginal\tDestination\nSat Dec 21 16:48:22 2024\t{}\t{}\n",
+            src_path.display(),
+            dest_path.display()
+        ),
+    )
+    .unwrap();
+
+    let cur_dir = env::current_dir().unwrap();
+    env::set_current_dir(&test_env.src).unwrap();
+    let mut log = Vec::new();
+    let result = rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    env::set_current_dir(cur_dir).unwrap();
+
+    // Expect error about old format
+    let err = result.expect_err("Expected error from old rip format line");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("Found timestamp 'Sat Dec 21 16:48:22 2024' from old rip format"),
+        "Unexpected error message: {err_msg}"
+    );
+}
