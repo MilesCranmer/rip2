@@ -32,7 +32,7 @@ lazy_static = "1.4"
 predicates = "3.0"
 rand = "0.8"
 regex = "1.11.0"
-rstest = "0.18"
+rstest = "0.23"
 tempfile = "3"
 
 [profile.release]
