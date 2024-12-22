@@ -35,8 +35,8 @@ jobs:
           - windows-latest
         rust-version:
           - stable
-
-
+    env:
+      HAS_COVERALLS_ACCESS: ${{ secrets.COVERALLS_REPO_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -54,8 +54,12 @@ jobs:
         run: cargo clippy --all --all-targets -- -D warnings
       - name: Test documentation
         run: cargo doc --all --no-deps
-      - name: Test with code coverage
+      - name: Run tests with code coverage
+        if: ${{ env.HAS_COVERALLS_ACCESS }}
         run: cargo tarpaulin --release --engine llvm --follow-exec --post-test-delay 10 --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }}
+      - name: Run tests
+        if: ${{ !env.HAS_COVERALLS_ACCESS }}
+        run: cargo test --all
 
   nix:
     runs-on: ${{ matrix.os }}
