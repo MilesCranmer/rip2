@@ -257,3 +257,47 @@ fn fail_move_dir() {
         assert!(e.to_string().contains("Failed to remove dir"));
     }
 }
+
+#[rstest]
+fn test_directory_size_output() {
+    let tmpdir = tempdir().unwrap();
+    let path = PathBuf::from(tmpdir.path());
+    // Create a directory with some files
+    let test_dir = path.join("test_dir");
+    fs::create_dir(&test_dir).unwrap();
+
+    // Create a few files with known sizes
+    fs::write(test_dir.join("file1"), vec![0; 1024]).unwrap(); // 1 KiB
+    fs::write(test_dir.join("file2"), vec![0; 2048]).unwrap(); // 2 KiB
+
+    let mut output = Vec::new();
+    // Test the directory size calculation and output
+    let result = rip2::testing::testable_should_we_bury_this(
+        &PathBuf::from("test_dir"),
+        &test_dir,
+        &fs::metadata(&test_dir).unwrap(),
+        &mut output,
+    );
+
+    assert!(result.is_ok());
+    let output_str = String::from_utf8(output).unwrap();
+
+    // Should actually show the files in the directory
+    assert!(output_str.contains("test_dir"));
+    assert!(output_str.contains("file1"));
+    assert!(output_str.contains("file2"));
+
+    let re = regex::Regex::new(r"directory, ([\d.]+ KiB)").unwrap();
+    let size = re.captures(&output_str).unwrap().get(1).unwrap().as_str();
+
+    // The total size should be at least 3 KiB (can be larger due to filesystem overhead)
+    assert!(size.contains("KiB"));
+    let numeric_size = size
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
+    assert!(numeric_size >= 3.0);
+    assert!(numeric_size < 6.0);
+}
