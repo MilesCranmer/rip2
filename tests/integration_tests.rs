@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use predicates::str::is_match;
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::{Rng, SeedableRng};
 use rip2::args::Args;
 use rip2::record;
 use rip2::util::TestMode;
@@ -717,7 +717,7 @@ fn read_empty_record() {
 /// Hash the directory and all contents
 fn _hash_dir(dir: &PathBuf) -> String {
     let mut hash = DefaultHasher::new();
-    for f in WalkDir::new(dir).sort_by(|a, b| a.cmp(b)) {
+    for f in WalkDir::new(dir).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
         let f = f.unwrap();
         let path = f.path();
 
@@ -740,7 +740,8 @@ fn _hash_dir(dir: &PathBuf) -> String {
 /// Test that with many nested directories,
 /// we can still bury and unbury files
 #[rstest]
-fn many_nest() {
+fn many_nest(#[values(1, 2, 3)] seed: u64) {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let test_env = TestEnv::new();
 
     // Random generators
@@ -757,8 +758,8 @@ fn many_nest() {
     let mut unique_rand_names = {
         let mut rand_names = Vec::new();
         while rand_names.len() < max_num_files {
-            let dir_name_len = thread_rng().gen_range(pathname_len_range.clone());
-            let rand_name = thread_rng()
+            let dir_name_len = rng.gen_range(pathname_len_range.clone());
+            let rand_name = (&mut rng)
                 .sample_iter(&Alphanumeric)
                 .take(dir_name_len)
                 .map(char::from)
@@ -770,7 +771,7 @@ fn many_nest() {
         rand_names
     };
 
-    let depths = (0..num_folders).map(|_| thread_rng().gen_range(depth_range.clone()));
+    let depths = (0..num_folders).map(|_| rng.gen_range(depth_range.clone()));
     let dirs = depths
         .map(|depth| {
             let mut path = test_env.src.clone();
@@ -790,7 +791,7 @@ fn many_nest() {
     let filenames = {
         let mut filenames = Vec::new();
         for dir in dirs {
-            let num_files = thread_rng().gen_range(files_per_folder.clone());
+            let num_files = rng.gen_range(files_per_folder.clone());
             for _ in 0..num_files {
                 // Create an empty file
                 let filename = dir.join(format!("{}.txt", unique_rand_names.pop().unwrap()));
@@ -806,13 +807,14 @@ fn many_nest() {
     // Create the filenames with some data
     let num_bytes_per_file = filenames
         .iter()
-        .map(|_| thread_rng().gen_range(bytes_range.clone()) as u64);
+        .map(|_| rng.gen_range(bytes_range.clone()) as u64)
+        .collect::<Vec<u64>>();
     let data = {
         let mut data = Vec::new();
         for (filename, num_bytes) in filenames.iter().zip(num_bytes_per_file) {
             // Create a file with `num_bytes` stored
             let mut file = fs::File::create(filename).unwrap();
-            let cur_data = thread_rng()
+            let cur_data = (&mut rng)
                 .sample_iter(&Alphanumeric)
                 .take(num_bytes as usize)
                 .map(char::from)
