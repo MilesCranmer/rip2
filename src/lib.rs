@@ -229,7 +229,7 @@ fn should_we_bury_this(
 
         // Print the first few top-level files in the directory
         for entry in WalkDir::new(source)
-            .sort_by(|a, b| a.cmp(b))
+            .sort_by(|a, b| a.file_name().cmp(b.file_name()))
             .min_depth(1)
             .max_depth(1)
             .into_iter()

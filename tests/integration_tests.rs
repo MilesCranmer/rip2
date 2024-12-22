@@ -717,7 +717,7 @@ fn read_empty_record() {
 /// Hash the directory and all contents
 fn _hash_dir(dir: &PathBuf) -> String {
     let mut hash = DefaultHasher::new();
-    for f in WalkDir::new(dir).sort_by(|a, b| a.cmp(b)) {
+    for f in WalkDir::new(dir).sort_by(|a, b| a.file_name().cmp(b.file_name())) {
         let f = f.unwrap();
         let path = f.path();
 
