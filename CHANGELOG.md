@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/MilesCranmer/rip2/compare/v0.9.0...v0.9.1) (2024-12-22)
+
+
+### Features
+
+* generate auto-completion in flake build ([#65](https://github.com/MilesCranmer/rip2/issues/65)) ([0b6241a](https://github.com/MilesCranmer/rip2/commit/0b6241abda2b2a2da8cdef98f681bc1467085298))
+
 ## [0.9.0](https://github.com/MilesCranmer/rip2/compare/v0.8.3...v0.9.0) (2024-10-22)
 
 
