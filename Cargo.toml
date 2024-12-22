@@ -27,7 +27,7 @@ fs_extra = "1.3"
 walkdir = "1"
 
 [dev-dependencies]
-assert_cmd = "1.0"
+assert_cmd = "2"
 lazy_static = "1.4"
 predicates = "3.0"
 rand = "0.8"
