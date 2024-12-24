@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
         required: false
+      git_ref:
+        description: 'Git ref (commit SHA, tag, or branch) to run workflow on'
+        type: string
+        required: false
+        default: ''
 concurrency:
   # Skip intermediate builds: always.
   # Cancel intermediate builds: only if it is a pull request build.
@@ -45,6 +50,8 @@ jobs:
       HAS_COVERALLS_ACCESS: ${{ secrets.COVERALLS_REPO_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust-version }}
@@ -77,6 +84,8 @@ jobs:
           - macOS-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }}
       - name: Check Nix flake inputs
         uses: DeterminateSystems/flake-checker-action@v4
       - name: Install Nix
@@ -111,6 +120,7 @@ jobs:
 
     steps:
       - uses: googleapis/release-please-action@v4
+        if: ${{ !github.event.inputs.git_ref }}
         id: release
         with:
           release-type: rust
@@ -120,10 +130,11 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: release-please
-    if: needs.release-please.outputs.created || github.event.inputs.force_publish == 'true'
-
+    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && !github.event.inputs.git_ref && startsWith(github.event.inputs.git_ref, 'v'))
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -137,7 +148,7 @@ jobs:
     needs:
       - release-please
       - publish
-    if: needs.release-please.outputs.created || github.event.inputs.force_publish == 'true'
+    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && !github.event.inputs.git_ref && startsWith(github.event.inputs.git_ref, 'v'))
     strategy:
       fail-fast: false
       matrix:
@@ -240,6 +251,8 @@ jobs:
           - stable
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }}
       - uses: Swatinem/rust-cache@v2
       - name: Install musl-tools on Linux
         run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools
@@ -275,6 +288,6 @@ jobs:
         if: matrix.toolchain == 'stable'
         with:
           file_glob: true
-          tag: ${{ needs.release-please.outputs.tag_name }}
+          tag: ${{ (startsWith(github.event.inputs.git_ref, 'v') && github.event.inputs.git_ref) || needs.release-please.outputs.tag_name }}
           file: ${{ matrix.platform.name }}
           overwrite: true
