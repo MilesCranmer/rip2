@@ -10,6 +10,12 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish and packaging workflow'
+        type: boolean
+        default: false
+        required: false
 concurrency:
   # Skip intermediate builds: always.
   # Cancel intermediate builds: only if it is a pull request build.
@@ -114,7 +120,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: release-please
-    if: needs.release-please.outputs.created
+    if: needs.release-please.outputs.created || github.event.inputs.force_publish == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +137,7 @@ jobs:
     needs:
       - release-please
       - publish
+    if: needs.release-please.outputs.created || github.event.inputs.force_publish == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -188,6 +195,7 @@ jobs:
           #   target: riscv64gc-unknown-linux-gnu
           #   bin: rip
           #   name: rip-Linux-riscv64gc-gnu.tar.gz
+          #   skip_tests: true
           - os_name: Linux-s390x
             os: ubuntu-20.04
             target: s390x-unknown-linux-gnu
