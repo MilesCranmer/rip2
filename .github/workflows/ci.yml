@@ -24,7 +24,7 @@ on:
 concurrency:
   # Skip intermediate builds: always.
   # Cancel intermediate builds: only if it is a pull request build.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.force_publish }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 env:
@@ -130,7 +130,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: release-please
-    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && !github.event.inputs.git_ref && startsWith(github.event.inputs.git_ref, 'v'))
+    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && startsWith(github.event.inputs.git_ref, 'v'))
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,7 +148,7 @@ jobs:
     needs:
       - release-please
       - publish
-    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && !github.event.inputs.git_ref && startsWith(github.event.inputs.git_ref, 'v'))
+    if: needs.release-please.outputs.created || (github.event.inputs.force_publish == 'true' && startsWith(github.event.inputs.git_ref, 'v'))
     strategy:
       fail-fast: false
       matrix:
