@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use predicates::str::is_match;
+use predicates::Predicate;
 use rand::distributions::Alphanumeric;
 use rand::{Rng, SeedableRng};
 use rip2::args::Args;
@@ -1078,4 +1079,119 @@ fn _test_concurrent_writes<const FILE_LOCK: bool>() {
     } else {
         assert!(corrupted_lines > 0);
     }
+}
+
+#[rstest]
+fn test_no_header() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+    let record_file = test_env.graveyard.join(".record");
+    fs::write(
+        &record_file,
+        b"2024-12-21T16:47:21.922660-05:00\toldpath\tnewpath\n",
+    )
+    .unwrap();
+
+    // Attempt to run `seance`, which will parse `.record`. We expect it to fail with
+    // a helpful error message.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+
+    // Check that we got the right error
+    let err = result.expect_err("Expected an error due to missing header");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // Ensure the error message alerts the user to the old format
+    let err_msg = err.to_string();
+    assert!(
+        is_match(r"Invalid record file header at .+:\s+Expected: 'Time\tOriginal\tDestination'\s+Got:\s+'.*'")
+            .unwrap()
+            .eval(&err_msg),
+        "Unexpected error message: {err_msg}"
+    );
+
+    // Now, add the header to the top of the file and try again
+    let header = "Time\tOriginal\tDestination\n";
+    let existing_content = fs::read_to_string(&record_file).unwrap();
+    fs::write(&record_file, format!("{}{}", header, existing_content)).unwrap();
+
+    // Try running seance again - it should work this time
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+}
+
+#[rstest]
+fn test_legacy_date_format() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+
+    // Create source and destination paths with actual files
+    let src_dir = test_env.src.join("nested").join("dir");
+    fs::create_dir_all(&src_dir).unwrap();
+    let src_path = src_dir.join("testfile.txt");
+    fs::write(&src_path, "").unwrap();
+
+    // Create destination path in graveyard mirroring source structure
+    let dest_path =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&src_path).unwrap());
+    fs::create_dir_all(dest_path.parent().unwrap()).unwrap();
+    // Put the actual contents here:
+    fs::write(&dest_path, "test content").unwrap();
+    // And delete the src file
+    fs::remove_file(&src_path).unwrap();
+
+    // Write record file with old format timestamp but new header
+    let record_file = test_env.graveyard.join(".record");
+    fs::write(
+        record_file,
+        format!(
+            "Time\tOriginal\tDestination\nSat Dec 21 16:48:22 2024\t{}\t{}\n",
+            src_path.display(),
+            dest_path.display()
+        ),
+    )
+    .unwrap();
+
+    let cur_dir = env::current_dir().unwrap();
+    env::set_current_dir(&test_env.src).unwrap();
+    let mut log = Vec::new();
+    let result = rip2::run(
+        Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    env::set_current_dir(cur_dir).unwrap();
+
+    // Expect error about old format
+    let err = result.expect_err("Expected error from old rip format line");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("Found timestamp 'Sat Dec 21 16:48:22 2024' from old rip format"),
+        "Unexpected error message: {err_msg}"
+    );
 }

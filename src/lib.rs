@@ -103,12 +103,8 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
         writeln!(stream, "{: <19}\tpath", "deletion_time")?;
         for grave in record.seance(&gravepath)? {
-            let parsed_time = chrono::DateTime::parse_from_rfc3339(&grave.time)
-                .expect("Failed to parse time from RFC3339 format")
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string();
-            // Get the path separator:
-            writeln!(stream, "{}\t{}", parsed_time, grave.dest.display())?;
+            let formatted_time = grave.format_time_for_display()?;
+            writeln!(stream, "{}\t{}", formatted_time, grave.dest.display())?;
         }
     } else if cli.targets.is_empty() {
         Args::command().print_help()?;

@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{DateTime, Local};
 use fs4::fs_std::FileExt;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -28,6 +28,45 @@ impl RecordItem {
             dest: PathBuf::from(dest),
         }
     }
+
+    /// Parse the timestamp in this record, which could be in either RFC3339 format (from rip2)
+    /// or the old rip format --- in which case we return a helpful error.
+    fn parse_timestamp(&self) -> Result<DateTime<Local>, Error> {
+        // Try parsing as RFC3339 first
+        if let Ok(dt) = DateTime::parse_from_rfc3339(&self.time) {
+            return Ok(dt.with_timezone(&Local));
+        }
+
+        // Roughly check if it matches the old rip format (e.g., "Sun Dec  1 02:15:56 2024")
+        let is_old_format = self.time.split_whitespace().count() == 5
+            && self
+                .time
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c.is_whitespace() || c == ':');
+        if is_old_format {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "Found timestamp '{}' from old rip format. \
+                    You will need to delete the `.record` file \
+                    and start over with rip2. \
+                    You can see the path with `rip graveyard`.",
+                    self.time
+                ),
+            ))
+        } else {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Failed to parse time '{}' as RFC3339 format", self.time),
+            ))
+        }
+    }
+
+    /// Format this record's timestamp for display in the seance output
+    pub fn format_time_for_display(&self) -> Result<String, Error> {
+        self.parse_timestamp()
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+    }
 }
 
 /// A record of file operations maintained in the graveyard directory
@@ -50,6 +89,8 @@ pub const DEFAULT_FILE_LOCK: bool = false;
 // TODO: Investigate why this is needed. Does Windows not support file locks?
 
 impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
+    const HEADER: &'static str = "Time\tOriginal\tDestination";
+
     pub fn new(graveyard: &Path) -> Record<FILE_LOCK> {
         let path = graveyard.join(RECORD);
         // Create the record file if it doesn't exist
@@ -64,8 +105,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             if FILE_LOCK {
                 record_file.lock_exclusive().unwrap();
             }
-            record_file
-                .write_all(b"Time\tOriginal\tDestination\n")
+            writeln!(record_file, "{}", Self::HEADER)
                 .expect("Failed to write header to record file");
         }
         Record { path }
@@ -87,14 +127,15 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         // record: impl AsRef<Path>
         let record_file = self.open()?;
         let mut contents = String::new();
-        BufReader::new(&record_file).read_to_string(&mut contents)?;
+        {
+            let mut reader = self.skip_header(BufReader::new(&record_file))?;
+            reader.read_to_string(&mut contents)?;
+        }
 
         // This will be None if there is nothing, or Some
         // if there is items in the vector
         let mut graves_to_exhume: Vec<PathBuf> = Vec::new();
-        let mut lines = contents.lines();
-        lines.next();
-        for entry in lines.rev().map(RecordItem::new) {
+        for entry in contents.lines().rev().map(RecordItem::new) {
             // Check that the file is still in the graveyard.
             // If it is, return the corresponding line.
             if util::symlink_exists(&entry.dest) {
@@ -116,29 +157,24 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
 
     /// Takes a vector of grave paths and removes the respective lines from the record
     fn delete_lines(&self, record_file: fs::File, graves: &[PathBuf]) -> Result<(), Error> {
-        let record_path = &self.path;
         // Get the lines to write back to the record, which is every line except
         // the ones matching the exhumed graves. Store them in a vector
         // since we'll be overwriting the record in-place.
-        let mut reader = BufReader::new(record_file).lines();
-        let header = reader
-            .next()
-            .unwrap_or_else(|| Ok(String::new()))
-            .unwrap_or_default(); // Capture the header
+        let reader = self.skip_header(BufReader::new(record_file))?;
         let lines_to_write: Vec<String> = reader
+            .lines()
             .map_while(Result::ok)
             .filter(|line| !graves.iter().any(|y| *y == RecordItem::new(line).dest))
             .collect();
-        // let mut new_record_file = fs::File::create(record_path)?;
         let mut new_record_file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open(record_path)?;
+            .open(&self.path)?;
         if FILE_LOCK {
             new_record_file.lock_exclusive().unwrap();
         }
-        writeln!(new_record_file, "{}", header)?; // Write the header back
+        writeln!(new_record_file, "{}", Self::HEADER)?; // Write the header back
         for line in lines_to_write {
             writeln!(new_record_file, "{}", line)?;
         }
@@ -163,9 +199,9 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         graves: &'a [PathBuf],
     ) -> impl Iterator<Item = String> + 'a {
         let record_file = self.open().unwrap();
-        let mut reader = BufReader::new(record_file).lines();
-        reader.next();
+        let reader = self.skip_header(BufReader::new(record_file)).unwrap();
         reader
+            .lines()
             .map_while(Result::ok)
             .filter(move |line| graves.iter().any(|y| *y == RecordItem::new(line).dest))
     }
@@ -176,9 +212,9 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         gravepath: &'a PathBuf,
     ) -> io::Result<impl Iterator<Item = RecordItem> + 'a> {
         let record_file = self.open()?;
-        let mut reader = BufReader::new(record_file).lines();
-        reader.next();
+        let reader = self.skip_header(BufReader::new(record_file))?;
         Ok(reader
+            .lines()
             .map_while(Result::ok)
             .map(|line| RecordItem::new(&line))
             .filter(move |record_item| record_item.dest.starts_with(gravepath)))
@@ -188,27 +224,10 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
     pub fn write_log(&self, source: impl AsRef<Path>, dest: impl AsRef<Path>) -> io::Result<()> {
         let (source, dest) = (source.as_ref(), dest.as_ref());
 
-        let already_existed = self.path.exists();
-
-        // TODO: The tiny amount of time between the check and the open
-        //       could allow for a race condition. But maybe I'm being overkill.
-
-        let mut record_file = if already_existed {
-            fs::OpenOptions::new().append(true).open(&self.path)?
-        } else {
-            fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(&self.path)?
-        };
+        let mut record_file = fs::OpenOptions::new().append(true).open(&self.path)?;
 
         if FILE_LOCK {
             record_file.lock_exclusive().unwrap();
-        }
-
-        if !already_existed {
-            writeln!(record_file, "Time\tOriginal\tDestination")?;
         }
 
         writeln!(
@@ -226,6 +245,26 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         })?;
 
         Ok(())
+    }
+
+    /// Validates the header of a record file and returns the reader positioned after the header.
+    /// Returns Err if the header is invalid.
+    fn skip_header<R: BufRead>(&self, mut reader: R) -> io::Result<R> {
+        let mut header = String::new();
+        reader.read_line(&mut header)?;
+
+        if header.trim() != Self::HEADER {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "Invalid record file header at {}:\n  Expected: '{}'\n  Got:      '{}'",
+                    &self.path.display(),
+                    Self::HEADER,
+                    header.trim()
+                ),
+            ));
+        }
+        Ok(reader)
     }
 }
 
