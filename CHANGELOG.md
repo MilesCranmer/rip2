@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2](https://github.com/MilesCranmer/rip2/compare/v0.9.1...v0.9.2) (2024-12-24)
+
+
+### Features
+
+* include header validation ([e36bcc6](https://github.com/MilesCranmer/rip2/commit/e36bcc6e3de4a4ef4bd13f02ff7ad4ae74946c7e))
+* nicer error message for old `rip` format ([98e6b83](https://github.com/MilesCranmer/rip2/commit/98e6b83c0ed37abef1f0ddbb2d962cee41e702ba))
+
 ## [0.9.1](https://github.com/MilesCranmer/rip2/compare/v0.9.0...v0.9.1) (2024-12-22)
 
 
