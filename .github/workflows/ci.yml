@@ -68,10 +68,10 @@ jobs:
       - name: Test documentation
         run: cargo doc --all --no-deps
       - name: Run tests with code coverage
-        if: ${{ env.HAS_COVERALLS_ACCESS }}
+        if: ${{ env.HAS_COVERALLS_ACCESS == 'true' }}
         run: cargo tarpaulin --release --engine llvm --follow-exec --post-test-delay 10 --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }}
       - name: Run tests
-        if: ${{ !env.HAS_COVERALLS_ACCESS }}
+        if: ${{ env.HAS_COVERALLS_ACCESS != 'true' }}
         run: cargo test --all
 
   nix:
