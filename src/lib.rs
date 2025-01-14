@@ -163,7 +163,10 @@ fn bury_target<const FILE_LOCK: bool>(
 
     if inspect && !should_we_bury_this(target, source, metadata, mode, stream)? {
         // User chose to not bury the file
-    } else if source.starts_with(graveyard) {
+    } else if source.starts_with(
+        dunce::canonicalize(graveyard)
+            .map_err(|e| Error::new(e.kind(), "Failed to canonicalize graveyard path"))?,
+    ) {
         // If rip is called on a file already in the graveyard, prompt
         // to permanently delete it instead.
         if force
