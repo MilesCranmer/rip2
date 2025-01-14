@@ -349,28 +349,25 @@ fn test_duplicate_file(
 /// Test that big files trigger special behavior.
 /// In this test, we simply delete it automatically.
 #[rstest]
-fn test_big_file() {
+fn test_big_file(#[values(false, true)] force: bool) {
     let _env_lock = aquire_lock();
-
     let test_env = TestEnv::new();
-    // Access constant BIG_FILE_THRESHOLD from rip2's lib.rs:
-    let size = rip2::BIG_FILE_THRESHOLD + 1;
 
-    // test_env.src
     let big_file_path = test_env.src.join("big_file.txt");
     let file = fs::File::create(&big_file_path).unwrap();
-    file.set_len(size).unwrap();
+    file.set_len(rip2::BIG_FILE_THRESHOLD + 1).unwrap();
 
     let expected_graveyard_path = util::join_absolute(
         &test_env.graveyard,
-        dunce::canonicalize(big_file_path).unwrap(),
+        dunce::canonicalize(&big_file_path).unwrap(),
     );
 
     let mut log = Vec::new();
     rip2::run(
         Args {
-            targets: [test_env.src.join("big_file.txt")].to_vec(),
+            targets: [big_file_path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
+            force,
             ..Args::default()
         },
         TestMode,
@@ -378,11 +375,30 @@ fn test_big_file() {
     )
     .unwrap();
 
-    // The file should be deleted
-    assert!(!test_env.src.join("big_file.txt").exists());
+    let log_s = String::from_utf8(log).unwrap();
 
-    // And not in the graveyard either
-    assert!(!expected_graveyard_path.exists());
+    // In force mode, file should be copied to graveyard
+    // In non-force mode, TestMode returns true for prompt, so file should be deleted
+    if force {
+        assert!(!big_file_path.exists());
+        assert!(expected_graveyard_path.exists());
+        assert!(
+            !log_s.contains("About to copy a big file"),
+            "Should not prompt in force mode"
+        );
+        assert!(
+            !log_s.contains("Permanently delete this file instead?"),
+            "Should not prompt in force mode"
+        );
+    } else {
+        assert!(log_s.contains("About to copy a big file"));
+        assert!(!big_file_path.exists());
+        assert!(!expected_graveyard_path.exists());
+        assert!(
+            log_s.contains("Permanently delete this file instead?"),
+            "Should prompt in non-force mode"
+        );
+    }
 }
 
 /// Test that running rip on the same file twice
