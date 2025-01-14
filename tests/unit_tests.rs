@@ -102,9 +102,9 @@ fn test_filetypes(
     let mode = TestMode;
 
     if copy {
-        rip2::copy_file(&source_path, &dest_path, &mode, &mut log).unwrap();
+        rip2::copy_file(&source_path, &dest_path, &mode, &mut log, false).unwrap();
     } else {
-        rip2::move_target(&source_path, &dest_path, true, &mode, &mut log).unwrap();
+        rip2::move_target(&source_path, &dest_path, true, &mode, &mut log, false).unwrap();
     }
 
     let log_s = String::from_utf8(log).unwrap();
@@ -251,7 +251,7 @@ fn fail_move_dir() {
     let dest = path_dest.join("foo");
     let target = path_target.join("bar");
     let mut log = Vec::new();
-    let results = rip2::move_dir(&target, &dest, &TestMode, &mut log);
+    let results = rip2::move_dir(&target, &dest, &TestMode, &mut log, false);
     assert!(results.is_err());
     if let Err(e) = results {
         assert!(e.to_string().contains("Failed to remove dir"));

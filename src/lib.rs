@@ -47,7 +47,8 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
 
     // If the user wishes to restore everything
     if cli.decompose {
-        if util::prompt_yes("Really unlink the entire graveyard?", &mode, stream)? {
+        // In force mode, skip the prompt to decompose
+        if cli.force || util::prompt_yes("Really unlink the entire graveyard?", &mode, stream)? {
             fs::remove_dir_all(graveyard)?;
         }
     } else if let Some(mut graves_to_exhume) = cli.unbury {
@@ -81,16 +82,18 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
                 true => util::rename_grave(&entry.orig),
                 false => PathBuf::from(&entry.orig),
             };
-            move_target(&entry.dest, &orig, allow_rename, &mode, stream).map_err(|e| {
-                Error::new(
-                    e.kind(),
-                    format!(
-                        "Unbury failed: couldn't copy files from {} to {}",
-                        entry.dest.display(),
-                        orig.display()
-                    ),
-                )
-            })?;
+            move_target(&entry.dest, &orig, allow_rename, &mode, stream, cli.force).map_err(
+                |e| {
+                    Error::new(
+                        e.kind(),
+                        format!(
+                            "Unbury failed: couldn't copy files from {} to {}",
+                            entry.dest.display(),
+                            orig.display()
+                        ),
+                    )
+                },
+            )?;
             writeln!(
                 stream,
                 "Returned {} to {}",
@@ -120,6 +123,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
                 allow_rename,
                 &mode,
                 stream,
+                cli.force,
             )?;
         }
     }
@@ -137,6 +141,7 @@ fn bury_target<const FILE_LOCK: bool>(
     allow_rename: bool,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
+    force: bool,
 ) -> Result<(), Error> {
     // Check if source exists
     let metadata = &fs::symlink_metadata(target).map_err(|_| {
@@ -158,11 +163,22 @@ fn bury_target<const FILE_LOCK: bool>(
 
     if inspect && !should_we_bury_this(target, source, metadata, mode, stream)? {
         // User chose to not bury the file
-    } else if source.starts_with(graveyard) {
+    } else if source.starts_with(
+        dunce::canonicalize(graveyard)
+            .map_err(|e| Error::new(e.kind(), "Failed to canonicalize graveyard path"))?,
+    ) {
         // If rip is called on a file already in the graveyard, prompt
         // to permanently delete it instead.
-        writeln!(stream, "{} is already in the graveyard.", source.display())?;
-        if util::prompt_yes("Permanently unlink it?", mode, stream)? {
+        if force
+            || util::prompt_yes(
+                format!(
+                    "{} is already in the graveyard.\nPermanently unlink it?",
+                    source.display()
+                ),
+                mode,
+                stream,
+            )?
+        {
             if fs::remove_dir_all(source).is_err() {
                 fs::remove_file(source).map_err(|e| {
                     Error::new(e.kind(), format!("Couldn't unlink {}", source.display()))
@@ -185,7 +201,7 @@ fn bury_target<const FILE_LOCK: bool>(
             }
         };
 
-        let moved = move_target(source, dest, allow_rename, mode, stream).map_err(|e| {
+        let moved = move_target(source, dest, allow_rename, mode, stream, force).map_err(|e| {
             fs::remove_dir_all(dest).ok();
             Error::new(e.kind(), "Failed to bury file")
         })?;
@@ -270,6 +286,7 @@ pub fn move_target(
     allow_rename: bool,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
+    force: bool,
 ) -> Result<bool, Error> {
     // Try a simple rename, which will only work within the same mount point.
     // Trying to rename across filesystems will throw errno 18.
@@ -284,9 +301,9 @@ pub fn move_target(
     )?;
 
     if fs::symlink_metadata(target)?.is_dir() {
-        move_dir(target, dest, mode, stream)
+        move_dir(target, dest, mode, stream, force)
     } else {
-        let moved = copy_file(target, dest, mode, stream).map_err(|e| {
+        let moved = copy_file(target, dest, mode, stream, force).map_err(|e| {
             Error::new(
                 e.kind(),
                 format!(
@@ -313,6 +330,7 @@ pub fn move_dir(
     dest: &Path,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
+    force: bool,
 ) -> Result<bool, Error> {
     // Walk the source, creating directories and copying files as needed
     for entry in WalkDir::new(target).into_iter().filter_map(|e| e.ok()) {
@@ -336,7 +354,7 @@ pub fn move_dir(
                 )
             })?;
         } else {
-            copy_file(entry.path(), &dest.join(orphan), mode, stream).map_err(|e| {
+            copy_file(entry.path(), &dest.join(orphan), mode, stream, force).map_err(|e| {
                 Error::new(
                     e.kind(),
                     format!(
@@ -363,18 +381,24 @@ pub fn copy_file(
     dest: &Path,
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
+    force: bool,
 ) -> Result<bool, Error> {
     let metadata = fs::symlink_metadata(source)?;
     let filetype = metadata.file_type();
 
     if metadata.len() > BIG_FILE_THRESHOLD {
-        writeln!(
-            stream,
-            "About to copy a big file ({} is {})",
-            source.display(),
-            util::humanize_bytes(metadata.len())
-        )?;
-        if util::prompt_yes("Permanently delete this file instead?", mode, stream)? {
+        // In force mode, we default to copying big files
+        if !force
+            && util::prompt_yes(
+                format!(
+                    "About to copy a big file ({} is {})\nPermanently delete this file instead?",
+                    source.display(),
+                    util::humanize_bytes(metadata.len())
+                ),
+                mode,
+                stream,
+            )?
+        {
             return Ok(false);
         }
     }
@@ -404,13 +428,17 @@ pub fn copy_file(
     match fs::copy(source, dest) {
         Err(e) => {
             // Special file: Try copying it as normal, but this probably won't work
-            writeln!(
-                stream,
-                "Non-regular file or directory: {}",
-                source.display()
-            )?;
-
-            if util::prompt_yes("Permanently delete the file?", mode, stream)? {
+            // In force mode, we don't delete special files, we error
+            if !force
+                && util::prompt_yes(
+                    format!(
+                        "Non-regular file or directory: {}\nPermanently delete the file?",
+                        source.display()
+                    ),
+                    mode,
+                    stream,
+                )?
+            {
                 Ok(false)
             } else {
                 Err(e)

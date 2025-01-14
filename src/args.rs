@@ -102,10 +102,14 @@ pub struct Args {
     #[arg(short, long, num_args = 0)]
     pub unbury: Option<Vec<PathBuf>>,
 
-    /// Print some info about TARGET before
+    /// Print some info about FILES before
     /// burying
     #[arg(short, long)]
     pub inspect: bool,
+
+    /// Non-interactive mode
+    #[arg(short, long)]
+    pub force: bool,
 
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -137,6 +141,7 @@ struct IsDefault {
     seance: bool,
     unbury: bool,
     inspect: bool,
+    force: bool,
     completions: bool,
 }
 
@@ -149,6 +154,7 @@ impl IsDefault {
             seance: cli.seance == defaults.seance,
             unbury: cli.unbury == defaults.unbury,
             inspect: cli.inspect == defaults.inspect,
+            force: cli.force == defaults.force,
             completions: cli.command.is_none(),
         }
     }
@@ -164,7 +170,8 @@ pub fn validate_args(cli: &Args) -> Result<(), Error> {
             && defaults.decompose
             && defaults.seance
             && defaults.unbury
-            && defaults.inspect)
+            && defaults.inspect
+            && defaults.force)
     {
         return Err(Error::new(
             ErrorKind::InvalidInput,
@@ -175,6 +182,14 @@ pub fn validate_args(cli: &Args) -> Result<(), Error> {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "-d,--decompose can only be used with --graveyard",
+        ));
+    }
+
+    // Force and inspect are incompatible
+    if !defaults.force && !defaults.inspect {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "-f,--force and -i,--inspect cannot be used together",
         ));
     }
 

@@ -141,7 +141,8 @@ Options:
   -d, --decompose              Permanently deletes the graveyard
   -s, --seance                 Prints files that were deleted in the current directory
   -u, --unbury                 Restore the specified files or the last file if none are specified
-  -i, --inspect                Print some info about TARGET before burying
+  -i, --inspect                Print some info about FILES before burying
+  -f, --force                  Non-interactive mode
   -h, --help                   Print help
   -V, --version                Print version
 
@@ -231,6 +232,14 @@ If you want to put the graveyard somewhere else (like `~/.local/share/Trash`), y
   2. Set the environment variable `$RIP_GRAVEYARD` to `~/.local/share/Trash`.
 
 This can be a good idea because if the graveyard is mounted on an in-memory file system (as `/tmp` is in Arch Linux), deleting large files can quickly fill up your RAM. It's also much slower to move files across file systems, although the delay should be minimal with an SSD.
+
+**Force mode.**
+
+The `-f --force` flag enables non-interactive mode, which skips most prompts and automatically uses safe and reasonable behavior:
+
+- Big files are copied to the graveyard without prompting
+- Files already in the graveyard are permanently deleted without prompting
+- Special, non-movable files will error
 
 **Miscellaneous.**
 
