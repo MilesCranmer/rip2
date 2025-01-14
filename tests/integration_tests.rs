@@ -1346,39 +1346,37 @@ fn test_force_already_in_graveyard(#[values(false, true)] force: bool) {
     );
 }
 
+#[cfg(unix)]
 #[rstest]
 fn test_force_special_file(#[values(false, true)] force: bool) {
     let _env_lock = aquire_lock();
     let test_env = TestEnv::new();
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::net::UnixListener;
-        let socket_path = test_env.src.join("test.sock");
-        UnixListener::bind(&socket_path).unwrap();
+    use std::os::unix::net::UnixListener;
+    let socket_path = test_env.src.join("test.sock");
+    UnixListener::bind(&socket_path).unwrap();
 
-        let result = rip2::run(
-            Args {
-                targets: [socket_path.clone()].to_vec(),
-                graveyard: Some(test_env.graveyard.clone()),
-                force,
-                ..Args::default()
-            },
-            TestMode,
-            &mut Vec::new(),
-        );
+    let result = rip2::run(
+        Args {
+            targets: [socket_path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            force,
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
 
-        if force {
-            // In force mode, should error without prompting
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            assert!(err.to_string().contains("Failed to bury file"));
-        } else {
-            // In non-force mode with TestMode (which returns true for prompts),
-            // should succeed in deleting the file
-            assert!(result.is_ok());
-            assert!(!socket_path.exists());
-        }
+    if force {
+        // In force mode, should error without prompting
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Failed to bury file"));
+    } else {
+        // In non-force mode with TestMode (which returns true for prompts),
+        // should succeed in deleting the file
+        assert!(result.is_ok());
+        assert!(!socket_path.exists());
     }
 }
 
