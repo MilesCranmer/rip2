@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.3](https://github.com/MilesCranmer/rip2/compare/v0.9.2...v0.9.3) (2025-01-14)
+
+
+### Features
+
+* add `-f,--force` flag ([24c460a](https://github.com/MilesCranmer/rip2/commit/24c460a8ed5b74f0de8fb524e653b6c7da2bb36b))
+
+
+### Bug Fixes
+
+* canonicalize graveyard path in check ([87322f9](https://github.com/MilesCranmer/rip2/commit/87322f9f7d4ddcfbca31b247c8324c04c7d8df38))
+
 ## [0.9.2](https://github.com/MilesCranmer/rip2/compare/v0.9.1...v0.9.2) (2024-12-24)
 
 
