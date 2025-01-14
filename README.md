@@ -239,11 +239,7 @@ The `-f --force` flag enables non-interactive mode, which skips most prompts and
 
 - Big files are copied to the graveyard without prompting
 - Files already in the graveyard are permanently deleted without prompting
-- Special files (like sockets) will error
-- Cannot be used with `-i --inspect` flag
-
-This is useful for scripting or when you want to delete a lot of files without repeatedly answering prompts.
-
+- Special, non-movable files will error
 
 **Miscellaneous.**
 
