@@ -1211,3 +1211,198 @@ fn test_legacy_date_format() {
         "Unexpected error message: {err_msg}"
     );
 }
+
+#[rstest]
+fn test_force_basic_bury(#[values(false, true)] force: bool) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    let test_data = TestData::new(&test_env, None);
+    let expected_graveyard_path = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&test_data.path).unwrap(),
+    );
+
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            targets: [test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            force,
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+
+    // File should be buried
+    assert!(!test_data.path.exists());
+    assert!(expected_graveyard_path.exists());
+
+    let log_s = String::from_utf8(log).unwrap();
+    assert!(!log_s.contains("Send"), "Expected no prompts");
+    // No extra prompts (same for `force == false`)
+}
+
+#[rstest]
+fn test_force_decompose(#[values(false, true)] force: bool) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create a file in the graveyard to verify it gets deleted
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+    let test_file = test_env.graveyard.join("test_file.txt");
+    fs::write(&test_file, "test content").unwrap();
+
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            graveyard: Some(test_env.graveyard.clone()),
+            decompose: true,
+            force,
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+
+    let log_s = String::from_utf8(log).unwrap();
+    if force {
+        assert!(
+            !log_s.contains("Really unlink the entire graveyard?"),
+            "Expected no prompt in force mode"
+        );
+    } else {
+        assert!(
+            log_s.contains("Really unlink the entire graveyard?"),
+            "Expected prompt in non-force mode"
+        );
+    }
+    // In both cases, graveyard should be deleted because TestMode returns true for prompts
+    assert!(
+        !test_env.graveyard.exists(),
+        "Expected graveyard to be deleted"
+    );
+}
+
+#[rstest]
+fn test_force_already_in_graveyard(#[values(false, true)] force: bool) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create and bury a test file first
+    let test_data = TestData::new(&test_env, None);
+    let expected_graveyard_path = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&test_data.path).unwrap(),
+    );
+
+    // First bury normally (no force)
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            targets: [test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+
+    // Verify file was buried properly
+    assert!(!test_data.path.exists());
+    assert!(expected_graveyard_path.exists());
+
+    // Now try to delete the file from within the graveyard
+    let mut log = Vec::new();
+    rip2::run(
+        Args {
+            targets: [expected_graveyard_path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            force,
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+
+    let log_s = String::from_utf8(log).unwrap();
+    if force {
+        // In force mode, should permanently delete without any messages
+        assert!(!log_s.contains("is already in the graveyard"));
+        assert!(!log_s.contains("Permanently unlink it?"));
+    } else {
+        // In non-force mode, should prompt
+        assert!(log_s.contains("is already in the graveyard"));
+        assert!(log_s.contains("Permanently unlink it?"));
+    }
+    assert!(
+        !expected_graveyard_path.exists(),
+        "File should be permanently deleted"
+    );
+}
+
+#[rstest]
+fn test_force_special_file(#[values(false, true)] force: bool) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::net::UnixListener;
+        let socket_path = test_env.src.join("test.sock");
+        UnixListener::bind(&socket_path).unwrap();
+
+        let result = rip2::run(
+            Args {
+                targets: [socket_path.clone()].to_vec(),
+                graveyard: Some(test_env.graveyard.clone()),
+                force,
+                ..Args::default()
+            },
+            TestMode,
+            &mut Vec::new(),
+        );
+
+        if force {
+            // In force mode, should error without prompting
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("Failed to bury file"));
+        } else {
+            // In non-force mode with TestMode (which returns true for prompts),
+            // should succeed in deleting the file
+            assert!(result.is_ok());
+            assert!(!socket_path.exists());
+        }
+    }
+}
+
+#[rstest]
+fn test_force_inspect_error() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    let test_data = TestData::new(&test_env, None);
+
+    let err = rip2::run(
+        Args {
+            targets: [test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            force: true,
+            inspect: true,
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    )
+    .expect_err("Expected error when using force and inspect together");
+
+    assert!(err
+        .to_string()
+        .contains("-f,--force and -i,--inspect cannot be used together"));
+}
