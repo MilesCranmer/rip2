@@ -235,7 +235,7 @@ This can be a good idea because if the graveyard is mounted on an in-memory file
 
 **Force mode.**
 
-The `-f --force` flag enables non-interactive mode, which skips most prompts and uses default actions:
+The `-f --force` flag enables non-interactive mode, which skips most prompts and automatically uses safe and reasonable behavior:
 
 - Big files are copied to the graveyard without prompting
 - Files already in the graveyard are permanently deleted without prompting
