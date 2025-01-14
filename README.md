@@ -141,7 +141,7 @@ Options:
   -d, --decompose              Permanently deletes the graveyard
   -s, --seance                 Prints files that were deleted in the current directory
   -u, --unbury                 Restore the specified files or the last file if none are specified
-  -i, --inspect                Print some info about TARGET before burying
+  -i, --inspect                Print some info about FILES before burying
   -f, --force                  Non-interactive mode
   -h, --help                   Print help
   -V, --version                Print version

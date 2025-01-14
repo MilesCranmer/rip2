@@ -102,7 +102,7 @@ pub struct Args {
     #[arg(short, long, num_args = 0)]
     pub unbury: Option<Vec<PathBuf>>,
 
-    /// Print some info about TARGET before
+    /// Print some info about FILES before
     /// burying
     #[arg(short, long)]
     pub inspect: bool,
