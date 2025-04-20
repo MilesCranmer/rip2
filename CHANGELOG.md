@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.4](https://github.com/MilesCranmer/rip2/compare/v0.9.3...v0.9.4) (2025-04-20)
+
+
+### Bug Fixes
+
+* args not consumed by unbury ([27d6396](https://github.com/MilesCranmer/rip2/commit/27d63964410e0db6019b665e4146174112bacb18))
+* args not consumed by unbury, fixes [#112](https://github.com/MilesCranmer/rip2/issues/112) ([c0db92e](https://github.com/MilesCranmer/rip2/commit/c0db92e6f0105730081c641e929b8766a92fdc31))
+* fifo keeping same permissions ([587771a](https://github.com/MilesCranmer/rip2/commit/587771a6b0d8fc94a5d555e1a9c0f000b6db54fa))
+* fifo keeping same permissions ([9526576](https://github.com/MilesCranmer/rip2/commit/95265765e31a405759423ad7d2ee186b3457be1b))
+
 ## [0.9.3](https://github.com/MilesCranmer/rip2/compare/v0.9.2...v0.9.3) (2025-01-14)
 
 
