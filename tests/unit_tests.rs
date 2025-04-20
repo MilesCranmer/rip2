@@ -12,14 +12,15 @@ use tempfile::tempdir;
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::fs::symlink_file as symlink;
 
 #[cfg(unix)]
-use std::os::unix::net::UnixListener;
-
-#[cfg(target_os = "macos")]
 use std::os::unix::fs::FileTypeExt;
 
 lazy_static! {
@@ -80,9 +81,11 @@ fn test_filetypes(
         }
         "fifo" => {
             process::Command::new("mkfifo")
+                .arg("-m")
+                .arg("700")
                 .arg(&source_path)
-                .output()
-                .unwrap();
+                .status()
+                .expect("mkfifo failed");
         }
         "symlink" => {
             let target_path = path.join("symlink_target");
@@ -136,11 +139,16 @@ fn test_filetypes(
             assert!(!dest_path.exists());
         }
         "fifo" => {
-            #[cfg(target_os = "macos")]
+            #[cfg(unix)]
             {
-                assert!(dest_path.exists());
-                assert!(ftype.unwrap().is_fifo());
-                // TODO: Why does this fail on Linux?
+                // Dest must be a FIFO …
+                assert!(dest_path.exists(), "FIFO not created in graveyard");
+                let meta = fs::symlink_metadata(&dest_path).unwrap();
+                assert!(meta.file_type().is_fifo(), "dest is not a FIFO");
+
+                // … and keep the exact 0o700 mode.
+                let mode_bits = meta.permissions().mode() & 0o777;
+                assert_eq!(mode_bits, 0o700, "expected mode 0700, got {:o}", mode_bits);
             }
         }
         "symlink" => {

@@ -8,6 +8,12 @@ use walkdir::WalkDir;
 
 // Platform-specific imports
 #[cfg(unix)]
+use nix::libc;
+#[cfg(unix)]
+use nix::sys::stat::Mode;
+#[cfg(unix)]
+use nix::unistd::mkfifo;
+#[cfg(unix)]
 use std::os::unix::fs::{symlink, FileTypeExt, PermissionsExt};
 
 #[cfg(target_os = "windows")]
@@ -410,12 +416,10 @@ pub fn copy_file(
 
     #[cfg(unix)]
     if filetype.is_fifo() {
-        let metadata_mode = metadata.permissions().mode();
-        std::process::Command::new("mkfifo")
-            .arg(dest)
-            .arg("-m")
-            .arg(metadata_mode.to_string())
-            .output()?;
+        let perm: libc::mode_t = (metadata.permissions().mode() & 0o777) as libc::mode_t;
+        let mode = Mode::from_bits_truncate(perm);
+
+        mkfifo(dest, mode)?;
         return Ok(true);
     }
 
