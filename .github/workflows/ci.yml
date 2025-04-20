@@ -155,48 +155,48 @@ jobs:
         platform:
           # From https://github.com/houseabsolute/precious/blob/master/.github/workflows/ci.yml
           - os_name: FreeBSD-x86_64
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: x86_64-unknown-freebsd
             bin: rip
             name: rip-FreeBSD-x86_64.tar.gz
             skip_tests: true
           - os_name: Linux-x86_64
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             bin: rip
             name: rip-Linux-x86_64-musl.tar.gz
           - os_name: Linux-aarch64
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             bin: rip
             name: rip-Linux-aarch64-musl.tar.gz
             skip_tests: true
           - os_name: Linux-arm
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: arm-unknown-linux-musleabi
             bin: rip
             name: rip-Linux-arm-musl.tar.gz
             skip_tests: true
           - os_name: Linux-i686
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: i686-unknown-linux-musl
             bin: rip
             name: rip-Linux-i686-musl.tar.gz
             skip_tests: true
           - os_name: Linux-powerpc
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: powerpc-unknown-linux-gnu
             bin: rip
             name: rip-Linux-powerpc-gnu.tar.gz
             skip_tests: true
           - os_name: Linux-powerpc64
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: powerpc64-unknown-linux-gnu
             bin: rip
             name: rip-Linux-powerpc64-gnu.tar.gz
             skip_tests: true
           - os_name: Linux-powerpc64le
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: powerpc64le-unknown-linux-gnu
             bin: rip
             name: rip-Linux-powerpc64le.tar.gz
@@ -208,7 +208,7 @@ jobs:
           #   name: rip-Linux-riscv64gc-gnu.tar.gz
           #   skip_tests: true
           - os_name: Linux-s390x
-            os: ubuntu-20.04
+            os: ubuntu-latest
             target: s390x-unknown-linux-gnu
             bin: rip
             name: rip-Linux-s390x-gnu.tar.gz
