@@ -99,7 +99,7 @@ pub struct Args {
     /// Restore the specified
     /// files or the last file
     /// if none are specified
-    #[arg(short, long, num_args = 0)]
+    #[arg(short, long, num_args = 0..)]
     pub unbury: Option<Vec<PathBuf>>,
 
     /// Print some info about FILES before

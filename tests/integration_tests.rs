@@ -582,7 +582,7 @@ fn test_cli(
 }
 
 #[rstest]
-fn issue_0018() {
+fn test_issue_18() {
     let _env_lock = aquire_lock();
     let test_env = TestEnv::new();
 
@@ -717,6 +717,87 @@ fn test_graveyard_subcommand(#[values(false, true)] seance: bool) {
         .assert()
         .success()
         .stdout(expected_str);
+}
+
+#[test]
+fn test_issue_112() {
+    // This issue only shows up if we use the CLI, not if we use
+    // the library calls directly.
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Setup: create and bury two files
+    let test_data1 = TestData::new(&test_env, Some(&PathBuf::from("file1.txt")));
+    let test_data2 = TestData::new(&test_env, Some(&PathBuf::from("file2.txt")));
+    let path1 = test_data1.path.clone();
+    let path2 = test_data2.path.clone();
+
+    // Change to test dir and bury both files
+    let cur_dir = env::current_dir().unwrap();
+    env::set_current_dir(&test_env.src).unwrap();
+
+    cli_runner(
+        [
+            "--graveyard",
+            test_env.graveyard.to_str().unwrap(),
+            "file1.txt",
+        ],
+        None,
+    )
+    .assert()
+    .success();
+    cli_runner(
+        [
+            "--graveyard",
+            test_env.graveyard.to_str().unwrap(),
+            "file2.txt",
+        ],
+        None,
+    )
+    .assert()
+    .success();
+
+    // Get file1's graveyard path via seance
+    let seance_output = cli_runner(
+        ["--graveyard", test_env.graveyard.to_str().unwrap(), "-s"],
+        None,
+    )
+    .output()
+    .unwrap();
+    let seance_text = String::from_utf8(seance_output.stdout).unwrap();
+    let file1_grave_path = seance_text
+        .lines()
+        .find(|line| line.contains("file1.txt"))
+        .and_then(|line| line.split_whitespace().last())
+        .expect("Could not find file1.txt in graveyard");
+
+    // Try to restore file1 specifically
+    let output = cli_runner(
+        [
+            "--graveyard",
+            test_env.graveyard.to_str().unwrap(),
+            "-u",
+            file1_grave_path,
+        ],
+        None,
+    )
+    .output()
+    .unwrap();
+    let output_text = String::from_utf8(output.stdout).unwrap();
+
+    // Verify correct behavior
+    assert!(path1.exists(), "file1.txt should have been restored");
+    assert!(!path2.exists(), "file2.txt should not have been restored");
+    assert!(
+        output_text.contains("file1.txt"),
+        "Output should mention file1.txt"
+    );
+    assert!(
+        !output_text.contains("file2.txt"),
+        "Output should not mention file2.txt"
+    );
+
+    env::set_current_dir(cur_dir).unwrap();
 }
 
 #[rstest]
