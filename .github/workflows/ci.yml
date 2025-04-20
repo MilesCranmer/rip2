@@ -143,8 +143,8 @@ jobs:
         shell: bash
         run: |
           set -e
-          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
-          if cargo search "$CRATE_NAME" --limit 1 | grep -q "$CRATE_NAME = \"$VERSION\""; then
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if curl -sSf https://crates.io/api/v1/crates/$CRATE_NAME | grep -q "\"num\":\"$VERSION\""; then
             echo "Version $VERSION already exists on crates.io – skipping publish."
           else
             cargo publish --verbose --locked --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
