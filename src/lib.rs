@@ -283,6 +283,61 @@ fn should_we_bury_this(
     )
 }
 
+/// Create directories preserving permissions from the source path
+fn create_dirs_with_permissions(source: &Path, dest: &Path) -> Result<(), Error> {
+    // Get the common prefix and the parts that need to be created
+    let dest_parent = dest
+        .parent()
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Could not get parent of dest!"))?;
+
+    // First create all directories
+    fs::create_dir_all(dest_parent)?;
+
+    // Now walk the source path and apply permissions to corresponding dest directories
+    let source_parent = source.parent();
+    if let Some(src_parent) = source_parent {
+        // Build up the path components from source
+        let mut src_components = Vec::new();
+        let mut current = src_parent;
+        while let Some(parent) = current.parent() {
+            src_components.push(current);
+            current = parent;
+        }
+        src_components.push(current); // Add the root
+        src_components.reverse();
+
+        // Build up the path components from dest
+        let mut dest_components = Vec::new();
+        let mut current = dest_parent;
+        while let Some(parent) = current.parent() {
+            dest_components.push(current);
+            current = parent;
+        }
+        dest_components.push(current); // Add the root
+        dest_components.reverse();
+
+        // Apply permissions where we have matching source paths
+        let src_len = src_components.len();
+        let dest_len = dest_components.len();
+        if dest_len >= src_len {
+            let offset = dest_len - src_len;
+            for i in 0..src_len {
+                if let Ok(src_meta) = fs::metadata(src_components[i]) {
+                    if src_meta.is_dir() {
+                        let dest_dir = dest_components[i + offset];
+                        // Only set permissions if the directory exists (which it should after create_dir_all)
+                        if dest_dir.exists() {
+                            let _ = fs::set_permissions(dest_dir, src_meta.permissions());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Move a target to a given destination, copying if necessary.
 /// Returns true if the target was moved, false if it was not (due to
 /// user input)
@@ -301,10 +356,7 @@ pub fn move_target(
     }
 
     // If that didn't work, then we need to copy and rm.
-    fs::create_dir_all(
-        dest.parent()
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, "Could not get parent of dest!"))?,
-    )?;
+    create_dirs_with_permissions(target, dest)?;
 
     if fs::symlink_metadata(target)?.is_dir() {
         move_dir(target, dest, mode, stream, force)
@@ -349,14 +401,30 @@ pub fn move_dir(
         })?;
 
         if entry.file_type().is_dir() {
-            fs::create_dir_all(dest.join(orphan)).map_err(|e| {
+            let dest_dir = dest.join(orphan);
+            fs::create_dir_all(&dest_dir).map_err(|e| {
                 Error::new(
                     e.kind(),
                     format!(
                         "Failed to create dir: {} in {}",
                         entry.path().display(),
-                        dest.join(orphan).display()
+                        dest_dir.display()
                     ),
+                )
+            })?;
+            
+            // Preserve directory permissions
+            let source_metadata = fs::metadata(entry.path()).map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!("Failed to get metadata for: {}", entry.path().display()),
+                )
+            })?;
+            let source_perms = source_metadata.permissions();
+            fs::set_permissions(&dest_dir, source_perms).map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!("Failed to set permissions on: {}", dest_dir.display()),
                 )
             })?;
         } else {
