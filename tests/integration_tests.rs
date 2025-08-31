@@ -1557,3 +1557,93 @@ fn test_directory_permissions_preserved() {
     assert!(graveyard_file.exists(), "File should exist in graveyard");
 }
 
+#[test]
+#[cfg(unix)]
+fn test_deeply_nested_directory_permissions() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create deeply nested directories with alternating permissions
+    let level1 = test_env.src.join("level1_700");
+    let level2 = level1.join("level2_755");
+    let level3 = level2.join("level3_701");
+    let level4 = level3.join("level4_777");
+
+    fs::create_dir(&level1).unwrap();
+    fs::create_dir(&level2).unwrap();
+    fs::create_dir(&level3).unwrap();
+    fs::create_dir(&level4).unwrap();
+
+    // Set different permissions at each level
+    let mut perms1 = fs::metadata(&level1).unwrap().permissions();
+    perms1.set_mode(0o700);
+    fs::set_permissions(&level1, perms1).unwrap();
+
+    let mut perms2 = fs::metadata(&level2).unwrap().permissions();
+    perms2.set_mode(0o755);
+    fs::set_permissions(&level2, perms2).unwrap();
+
+    let mut perms3 = fs::metadata(&level3).unwrap().permissions();
+    perms3.set_mode(0o701);
+    fs::set_permissions(&level3, perms3).unwrap();
+
+    let mut perms4 = fs::metadata(&level4).unwrap().permissions();
+    perms4.set_mode(0o777);
+    fs::set_permissions(&level4, perms4).unwrap();
+
+    // Create a file at the deepest level
+    let deep_file = level4.join("deep.txt");
+    fs::write(&deep_file, "deep content").unwrap();
+
+    // Rip the deeply nested file
+    let result = rip2::run(
+        Args {
+            targets: vec![deep_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+
+    assert!(result.is_ok(), "Failed to rip file");
+
+    // Check permissions at each level in the graveyard
+    let graveyard_level1 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level1).unwrap());
+    let graveyard_level2 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level2).unwrap());
+    let graveyard_level3 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level3).unwrap());
+    let graveyard_level4 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level4).unwrap());
+
+    // Actually all permissions ARE preserved correctly!
+    let mode1 = fs::metadata(&graveyard_level1)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode2 = fs::metadata(&graveyard_level2)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode3 = fs::metadata(&graveyard_level3)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode4 = fs::metadata(&graveyard_level4)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // All directory permissions are preserved
+    assert_eq!(mode1, 0o700, "level1 permissions preserved");
+    assert_eq!(mode2, 0o755, "level2 permissions preserved");
+    assert_eq!(mode3, 0o701, "level3 permissions preserved");
+    assert_eq!(mode4, 0o777, "level4 permissions preserved");
+}
+
