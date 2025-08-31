@@ -42,7 +42,7 @@ fn main() -> ExitCode {
             ////////////////////////////////////////////////////////////
 
             if let Err(ref e) = result {
-                println!("Exception: {}", e);
+                println!("Exception: {e}");
                 return ExitCode::FAILURE;
             }
         }

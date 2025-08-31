@@ -113,9 +113,9 @@ pub fn yes_no_quit(in_stream: impl Read) -> Result<bool, Error> {
         .map(|c| c as char);
 
     match char_result {
-        Some('y') | Some('Y') => Ok(true),
-        Some('n') | Some('N') | Some('\n') | None => Ok(false),
-        Some('q') | Some('Q') => Err(Error::new(
+        Some('y' | 'Y') => Ok(true),
+        Some('n' | 'N' | '\n') | None => Ok(false),
+        Some('q' | 'Q') => Err(Error::new(
             io::ErrorKind::Interrupted,
             "User requested to quit",
         )),
@@ -128,7 +128,7 @@ pub fn rename_grave(grave: impl AsRef<Path>) -> PathBuf {
     let grave = grave.as_ref();
     let name = grave.to_str().expect("Filename must be valid unicode.");
     (1_u64..)
-        .map(|i| PathBuf::from(format!("{}~{}", name, i)))
+        .map(|i| PathBuf::from(format!("{name}~{i}")))
         .find(|p| !symlink_exists(p))
         .expect("Failed to rename duplicate file or directory")
 }
@@ -143,8 +143,9 @@ const UNITS: [(&str, u64); 4] = [
 pub fn humanize_bytes(bytes: u64) -> String {
     for (unit, size) in UNITS.iter().rev() {
         if bytes >= *size {
+            #[allow(clippy::cast_precision_loss)]
             return format!("{:.1} {}", bytes as f64 / *size as f64, unit);
         }
     }
-    format!("{} B", bytes)
+    format!("{bytes} B")
 }
