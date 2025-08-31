@@ -38,7 +38,7 @@ fn main() -> ExitCode {
 
             ////////////////////////////////////////////////////////////
             // Main code ///////////////////////////////////////////////
-            let result = rip2::run(cli, mode, &mut stream);
+            let result = rip2::run(&cli, mode, &mut stream);
             ////////////////////////////////////////////////////////////
 
             if let Err(ref e) = result {

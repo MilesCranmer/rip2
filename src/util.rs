@@ -109,7 +109,7 @@ pub fn yes_no_quit(in_stream: impl Read) -> Result<bool, Error> {
     let char_result = buffered
         .bytes()
         .next()
-        .and_then(|c| c.ok())
+        .and_then(Result::ok)
         .map(|c| c as char);
 
     match char_result {

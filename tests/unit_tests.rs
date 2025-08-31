@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{Cursor, ErrorKind};
 use std::path::PathBuf;
 use std::process;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use tempfile::tempdir;
 
 #[cfg(unix)]
@@ -28,7 +28,7 @@ lazy_static! {
 }
 
 fn aquire_lock() -> MutexGuard<'static, ()> {
-    GLOBAL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    GLOBAL_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[rstest]
