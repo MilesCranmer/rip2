@@ -146,9 +146,9 @@ struct IsDefault {
 }
 
 impl IsDefault {
-    fn new(cli: &Args) -> IsDefault {
+    fn new(cli: &Args) -> Self {
         let defaults = Args::default();
-        IsDefault {
+        Self {
             graveyard: cli.graveyard == defaults.graveyard,
             decompose: cli.decompose == defaults.decompose,
             seance: cli.seance == defaults.seance,

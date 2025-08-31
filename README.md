@@ -31,6 +31,14 @@ This version, "rip2", is a fork-of-a-fork:
 
 This package is supported on Linux, macOS, and Windows.
 
+### Homebrew
+
+On macOS or Linux with Homebrew installed:
+
+```bash
+$ brew install rip2
+```
+
 ### Cargo
 
 1. First [install Rust](https://doc.rust-lang.org/cargo/getting-started/installation.html).
@@ -38,14 +46,6 @@ This package is supported on Linux, macOS, and Windows.
 
 ```bash
 $ cargo install --locked rip2
-```
-
-### Homebrew
-
-On macOS or Linux with Homebrew installed:
-
-```bash
-$ brew install rip2
 ```
 
 ### Binaries
