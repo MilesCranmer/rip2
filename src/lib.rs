@@ -322,26 +322,28 @@ fn create_dirs_with_permissions(source: &Path, dest: &Path) -> Result<(), Error>
         let dest_len = dest_components.len();
         if dest_len >= src_len {
             let offset = dest_len - src_len;
-            for i in 0..src_len {
-                if let Ok(src_meta) = fs::metadata(src_components[i]) {
-                    if src_meta.is_dir() {
-                        let dest_dir = dest_components[i + offset];
-                        // Only set permissions if the directory exists (which it should after create_dir_all)
-                        if dest_dir.exists() {
-                            fs::set_permissions(dest_dir, src_meta.permissions()).map_err(|e| {
-                                Error::new(
-                                    e.kind(),
-                                    format!(
-                                        "Failed to preserve permissions on directory '{}': {}. The directory may be owned by another user.",
-                                        dest_dir.display(),
-                                        e
-                                    ),
-                                )
-                            })?;
-                        }
-                    }
-                }
-            }
+            src_components
+                .iter()
+                .enumerate()
+                .filter_map(|(i, &src_path)| {
+                    fs::metadata(src_path)
+                        .ok()
+                        .filter(|meta| meta.is_dir())
+                        .map(|meta| (dest_components[i + offset], meta.permissions()))
+                })
+                .filter(|(dest_dir, _)| dest_dir.exists())
+                .try_for_each(|(dest_dir, perms)| {
+                    fs::set_permissions(dest_dir, perms).map_err(|e| {
+                        Error::new(
+                            e.kind(),
+                            format!(
+                                "Failed to preserve permissions on directory '{}': {}. The directory may be owned by another user.",
+                                dest_dir.display(),
+                                e
+                            ),
+                        )
+                    })
+                })?;
         }
     }
 

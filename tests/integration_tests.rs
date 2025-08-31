@@ -1514,7 +1514,7 @@ fn test_directory_permissions_preserved() {
 
     // Rip the file from within the private directory
     let result = rip2::run(
-        Args {
+        &Args {
             targets: vec![secret_file.clone()],
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1596,7 +1596,7 @@ fn test_deeply_nested_directory_permissions() {
 
     // Rip the deeply nested file
     let result = rip2::run(
-        Args {
+        &Args {
             targets: vec![deep_file.clone()],
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1687,7 +1687,7 @@ fn test_directory_rip_vs_file_rip_permissions() {
 
     // Test 1: Rip the entire directory structure
     let result1 = rip2::run(
-        Args {
+        &Args {
             targets: vec![dir_structure1.clone()],
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1699,7 +1699,7 @@ fn test_directory_rip_vs_file_rip_permissions() {
 
     // Test 2: Rip just the file from the second structure
     let result2 = rip2::run(
-        Args {
+        &Args {
             targets: vec![file2.clone()],
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
