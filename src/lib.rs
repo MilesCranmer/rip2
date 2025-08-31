@@ -29,11 +29,11 @@ use record::{Record, RecordItem, DEFAULT_FILE_LOCK};
 
 const LINES_TO_INSPECT: usize = 6;
 const FILES_TO_INSPECT: usize = 6;
-pub const BIG_FILE_THRESHOLD: u64 = 500000000; // 500 MB
+pub const BIG_FILE_THRESHOLD: u64 = 500_000_000; // 500 MB
 
-pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> Result<(), Error> {
-    args::validate_args(&cli)?;
-    let graveyard: &PathBuf = &get_graveyard(cli.graveyard);
+pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) -> Result<(), Error> {
+    args::validate_args(cli)?;
+    let graveyard: &PathBuf = &get_graveyard(cli.graveyard.clone());
 
     if !graveyard.exists() {
         fs::create_dir_all(graveyard)?;
@@ -57,7 +57,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         if cli.force || util::prompt_yes("Really unlink the entire graveyard?", &mode, stream)? {
             fs::remove_dir_all(graveyard)?;
         }
-    } else if let Some(mut graves_to_exhume) = cli.unbury {
+    } else if let Some(ref mut graves_to_exhume) = cli.unbury.clone() {
         // Vector to hold the grave path of items we want to unbury.
         // This will be used to determine which items to remove from the
         // record following the unbury.
@@ -82,11 +82,12 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         let allow_rename = util::allow_rename();
 
         // Go through the graveyard and exhume all the graves
-        for line in record.lines_of_graves(&graves_to_exhume) {
+        for line in record.lines_of_graves(graves_to_exhume) {
             let entry = RecordItem::new(&line);
-            let orig: PathBuf = match util::symlink_exists(&entry.orig) {
-                true => util::rename_grave(&entry.orig),
-                false => PathBuf::from(&entry.orig),
+            let orig: PathBuf = if util::symlink_exists(&entry.orig) {
+                util::rename_grave(&entry.orig)
+            } else {
+                PathBuf::from(&entry.orig)
             };
             move_target(&entry.dest, &orig, allow_rename, &mode, stream, cli.force).map_err(
                 |e| {
@@ -107,7 +108,7 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
                 orig.display()
             )?;
         }
-        record.log_exhumed_graves(&graves_to_exhume)?;
+        record.log_exhumed_graves(graves_to_exhume)?;
     } else if cli.seance {
         let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
         writeln!(stream, "{: <19}\tpath", "deletion_time")?;
@@ -119,9 +120,9 @@ pub fn run(cli: Args, mode: impl util::TestingMode, stream: &mut impl Write) -> 
         Args::command().print_help()?;
     } else {
         let allow_rename = util::allow_rename();
-        for target in cli.targets {
+        for target in &cli.targets {
             bury_target(
-                &target,
+                target,
                 graveyard,
                 &record,
                 cwd,
@@ -160,11 +161,11 @@ fn bury_target<const FILE_LOCK: bool>(
         )
     })?;
     // Canonicalize the path unless it's a symlink
-    let source = &if !metadata.file_type().is_symlink() {
+    let source = &if metadata.file_type().is_symlink() {
+        cwd.join(target)
+    } else {
         dunce::canonicalize(cwd.join(target))
             .map_err(|e| Error::new(e.kind(), "Failed to canonicalize path"))?
-    } else {
-        cwd.join(target)
     };
 
     if inspect && !should_we_bury_this(target, source, metadata, mode, stream)? {
@@ -232,10 +233,10 @@ fn should_we_bury_this(
         // Get the size of the directory and all its contents
         {
             let num_bytes = get_size(source).map_err(|_| {
-                Error::new(
-                    ErrorKind::Other,
-                    format!("Failed to get size of directory: {}", source.display()),
-                )
+                Error::other(format!(
+                    "Failed to get size of directory: {}",
+                    source.display()
+                ))
             })?;
             writeln!(
                 stream,
@@ -251,7 +252,7 @@ fn should_we_bury_this(
             .min_depth(1)
             .max_depth(1)
             .into_iter()
-            .filter_map(|entry| entry.ok())
+            .filter_map(Result::ok)
             .take(FILES_TO_INSPECT)
         {
             writeln!(stream, "{}", entry.path().display())?;
@@ -268,9 +269,9 @@ fn should_we_bury_this(
             for line in BufReader::new(source_file)
                 .lines()
                 .take(LINES_TO_INSPECT)
-                .filter_map(|line| line.ok())
+                .filter_map(Result::ok)
             {
-                writeln!(stream, "> {}", line)?;
+                writeln!(stream, "> {line}")?;
             }
         } else {
             writeln!(stream, "Error reading {}", source.display())?;
@@ -339,14 +340,12 @@ pub fn move_dir(
     force: bool,
 ) -> Result<bool, Error> {
     // Walk the source, creating directories and copying files as needed
-    for entry in WalkDir::new(target).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(target).into_iter().filter_map(Result::ok) {
         // Path without the top-level directory
-        let orphan = entry.path().strip_prefix(target).map_err(|_| {
-            Error::new(
-                ErrorKind::Other,
-                "Parent directory isn't a prefix of child directories?",
-            )
-        })?;
+        let orphan = entry
+            .path()
+            .strip_prefix(target)
+            .map_err(|_| Error::other("Parent directory isn't a prefix of child directories?"))?;
 
         if entry.file_type().is_dir() {
             fs::create_dir_all(dest.join(orphan)).map_err(|e| {
@@ -453,26 +452,29 @@ pub fn copy_file(
 }
 
 pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
-    if let Some(flag) = graveyard {
-        flag
-    } else if let Ok(env_graveyard) = env::var("RIP_GRAVEYARD") {
-        PathBuf::from(env_graveyard)
-    } else if let Ok(mut env_graveyard) = env::var("XDG_DATA_HOME") {
-        if !env_graveyard.ends_with(std::path::MAIN_SEPARATOR) {
-            env_graveyard.push(std::path::MAIN_SEPARATOR);
-        }
-        env_graveyard.push_str("graveyard");
-        PathBuf::from(env_graveyard)
-    } else {
-        let user = util::get_user();
-        env::temp_dir().join(format!("graveyard-{}", user))
-    }
+    graveyard.map_or_else(
+        || {
+            if let Ok(env_graveyard) = env::var("RIP_GRAVEYARD") {
+                PathBuf::from(env_graveyard)
+            } else if let Ok(mut env_graveyard) = env::var("XDG_DATA_HOME") {
+                if !env_graveyard.ends_with(std::path::MAIN_SEPARATOR) {
+                    env_graveyard.push(std::path::MAIN_SEPARATOR);
+                }
+                env_graveyard.push_str("graveyard");
+                PathBuf::from(env_graveyard)
+            } else {
+                let user = util::get_user();
+                env::temp_dir().join(format!("graveyard-{user}"))
+            }
+        },
+        |flag| flag,
+    )
 }
 
 /// Testing module for exposing internal functions to unit tests.
 /// This module is only used for testing purposes and should not be used in production code.
 pub mod testing {
-    use super::*;
+    use super::{should_we_bury_this, util, Error, Metadata, Path, PathBuf, Write};
 
     pub fn testable_should_we_bury_this(
         target: &Path,

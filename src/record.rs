@@ -17,12 +17,12 @@ pub struct RecordItem {
 
 impl RecordItem {
     /// Parse a line in the record into a `RecordItem`
-    pub fn new(line: &str) -> RecordItem {
+    pub fn new(line: &str) -> Self {
         let mut tokens = line.split('\t');
         let time = tokens.next().expect("Bad format: column 1").to_string();
         let orig = tokens.next().expect("Bad format: column 2").to_string();
         let dest = tokens.next().expect("Bad format: column 3").to_string();
-        RecordItem {
+        Self {
             time,
             orig: PathBuf::from(orig),
             dest: PathBuf::from(dest),
@@ -91,7 +91,7 @@ pub const DEFAULT_FILE_LOCK: bool = false;
 impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
     const HEADER: &'static str = "Time\tOriginal\tDestination";
 
-    pub fn new(graveyard: &Path) -> Record<FILE_LOCK> {
+    pub fn new(graveyard: &Path) -> Self {
         let path = graveyard.join(RECORD);
         // Create the record file if it doesn't exist
         if !path.exists() {
@@ -108,7 +108,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             writeln!(record_file, "{}", Self::HEADER)
                 .expect("Failed to write header to record file");
         }
-        Record { path }
+        Self { path }
     }
 
     pub fn open(&self) -> Result<fs::File, Error> {
@@ -143,10 +143,9 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
                     self.delete_lines(record_file, &graves_to_exhume)?;
                 }
                 return Ok(entry.dest);
-            } else {
-                // File is gone, mark the grave to be removed from the record
-                graves_to_exhume.push(entry.dest);
             }
+            // File is gone, mark the grave to be removed from the record
+            graves_to_exhume.push(entry.dest);
         }
 
         if !graves_to_exhume.is_empty() {
@@ -176,7 +175,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         }
         writeln!(new_record_file, "{}", Self::HEADER)?; // Write the header back
         for line in lines_to_write {
-            writeln!(new_record_file, "{}", line)?;
+            writeln!(new_record_file, "{line}")?;
         }
         Ok(())
     }
@@ -188,7 +187,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             .map_err(|e| {
                 Error::new(
                     e.kind(),
-                    format!("Failed to remove unburied files from record: {}", e),
+                    format!("Failed to remove unburied files from record: {e}"),
                 )
             })
     }
@@ -270,7 +269,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
 
 impl<const FILE_LOCK: bool> Clone for Record<FILE_LOCK> {
     fn clone(&self) -> Self {
-        Record {
+        Self {
             path: self.path.clone(),
         }
     }
