@@ -327,7 +327,16 @@ fn create_dirs_with_permissions(source: &Path, dest: &Path) -> Result<(), Error>
                         let dest_dir = dest_components[i + offset];
                         // Only set permissions if the directory exists (which it should after create_dir_all)
                         if dest_dir.exists() {
-                            let _ = fs::set_permissions(dest_dir, src_meta.permissions());
+                            fs::set_permissions(dest_dir, src_meta.permissions()).map_err(|e| {
+                                Error::new(
+                                    e.kind(),
+                                    format!(
+                                        "Failed to preserve permissions on directory '{}': {}. The directory may be owned by another user.",
+                                        dest_dir.display(),
+                                        e
+                                    ),
+                                )
+                            })?;
                         }
                     }
                 }
