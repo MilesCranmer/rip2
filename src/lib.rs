@@ -421,7 +421,7 @@ pub fn move_dir(
                     ),
                 )
             })?;
-            
+
             // Preserve directory permissions
             let source_metadata = fs::metadata(entry.path()).map_err(|e| {
                 Error::new(
