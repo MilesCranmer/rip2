@@ -90,8 +90,8 @@ fn test_bury_unbury(#[values(false, true)] decompose: bool, #[values(false, true
     );
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
             inspect,
@@ -120,8 +120,8 @@ fn test_bury_unbury(#[values(false, true)] decompose: bool, #[values(false, true
     assert_eq!(restored_data_from_grave, test_data.data);
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard.clone()),
             decompose,
             unbury: if decompose { None } else { Some(Vec::new()) },
@@ -201,8 +201,8 @@ fn test_env(#[values("RIP_GRAVEYARD", "XDG_DATA_HOME")] env_var: &str) {
     env::set_var(env_var, graveyard);
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             // We don't set the graveyard here!
             ..Args::default()
@@ -243,8 +243,8 @@ fn test_duplicate_file(
     );
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [if in_folder {
                 test_data1.path.parent().unwrap().to_path_buf()
             } else {
@@ -296,8 +296,8 @@ fn test_duplicate_file(
 
     let mut log = Vec::new();
 
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [if in_folder {
                 test_data2.path.parent().unwrap().to_path_buf()
             } else {
@@ -320,8 +320,8 @@ fn test_duplicate_file(
     env::set_current_dir(&test_env.src).unwrap();
     let mut log = Vec::new();
     // Unbury using seance
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard.clone()),
             unbury: Some(Vec::new()),
             seance: true,
@@ -363,8 +363,8 @@ fn test_big_file(#[values(false, true)] force: bool) {
     );
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [big_file_path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard),
             force,
@@ -411,8 +411,8 @@ fn test_same_file_twice() {
     let test_data = TestData::new(&test_env, None);
 
     let mut log = Vec::new();
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             targets: [test_data.path.clone(), test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard),
             ..Args::default()
@@ -939,8 +939,8 @@ fn many_nest(#[values(1, 2, 3)] seed: u64) {
 
     // Bury the files interactively
     let mut log = Vec::new();
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             targets: [test_env.src.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
             inspect: true,
@@ -960,8 +960,8 @@ fn many_nest(#[values(1, 2, 3)] seed: u64) {
 
     // Unbury everything
     let mut log = Vec::new();
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard.clone()),
             unbury: Some(Vec::new()),
             ..Args::default()
@@ -991,8 +991,8 @@ fn test_bury_unbury_bury_unbury() {
     );
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1016,8 +1016,8 @@ fn test_bury_unbury_bury_unbury() {
 
     // First unbury
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard.clone()),
             unbury: Some(Vec::new()),
             ..Args::default()
@@ -1044,8 +1044,8 @@ fn test_bury_unbury_bury_unbury() {
 
     // Second bury
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1071,8 +1071,8 @@ fn test_bury_unbury_bury_unbury() {
 
     // Second unbury
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard),
             unbury: Some(Vec::new()),
             ..Args::default()
@@ -1192,8 +1192,8 @@ fn test_no_header() {
     // Attempt to run `seance`, which will parse `.record`. We expect it to fail with
     // a helpful error message.
     let mut log = Vec::new();
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             seance: true,
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1222,8 +1222,8 @@ fn test_no_header() {
 
     // Try running seance again - it should work this time
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             seance: true,
             graveyard: Some(test_env.graveyard),
             ..Args::default()
@@ -1270,8 +1270,8 @@ fn test_legacy_date_format() {
     let cur_dir = env::current_dir().unwrap();
     env::set_current_dir(&test_env.src).unwrap();
     let mut log = Vec::new();
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             seance: true,
             graveyard: Some(test_env.graveyard),
             ..Args::default()
@@ -1304,8 +1304,8 @@ fn test_force_basic_bury(#[values(false, true)] force: bool) {
     );
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard),
             force,
@@ -1336,8 +1336,8 @@ fn test_force_decompose(#[values(false, true)] force: bool) {
     fs::write(&test_file, "test content").unwrap();
 
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             graveyard: Some(test_env.graveyard.clone()),
             decompose: true,
             force,
@@ -1381,8 +1381,8 @@ fn test_force_already_in_graveyard(#[values(false, true)] force: bool) {
 
     // First bury normally (no force)
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [test_data.path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard.clone()),
             ..Args::default()
@@ -1398,8 +1398,8 @@ fn test_force_already_in_graveyard(#[values(false, true)] force: bool) {
 
     // Now try to delete the file from within the graveyard
     let mut log = Vec::new();
-    rip2::run(&
-        Args {
+    rip2::run(
+        &Args {
             targets: [expected_graveyard_path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard),
             force,
@@ -1436,8 +1436,8 @@ fn test_force_special_file(#[values(false, true)] force: bool) {
     let socket_path = test_env.src.join("test.sock");
     UnixListener::bind(&socket_path).unwrap();
 
-    let result = rip2::run(&
-        Args {
+    let result = rip2::run(
+        &Args {
             targets: [socket_path.clone()].to_vec(),
             graveyard: Some(test_env.graveyard),
             force,
@@ -1467,8 +1467,8 @@ fn test_force_inspect_error() {
 
     let test_data = TestData::new(&test_env, None);
 
-    let err = rip2::run(&
-        Args {
+    let err = rip2::run(
+        &Args {
             targets: [test_data.path].to_vec(),
             graveyard: Some(test_env.graveyard),
             force: true,

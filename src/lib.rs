@@ -84,7 +84,11 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         // Go through the graveyard and exhume all the graves
         for line in record.lines_of_graves(graves_to_exhume) {
             let entry = RecordItem::new(&line);
-            let orig: PathBuf = if util::symlink_exists(&entry.orig) { util::rename_grave(&entry.orig) } else { PathBuf::from(&entry.orig) };
+            let orig: PathBuf = if util::symlink_exists(&entry.orig) {
+                util::rename_grave(&entry.orig)
+            } else {
+                PathBuf::from(&entry.orig)
+            };
             move_target(&entry.dest, &orig, allow_rename, &mode, stream, cli.force).map_err(
                 |e| {
                     Error::new(
@@ -229,9 +233,10 @@ fn should_we_bury_this(
         // Get the size of the directory and all its contents
         {
             let num_bytes = get_size(source).map_err(|_| {
-                Error::other(
-                    format!("Failed to get size of directory: {}", source.display()),
-                )
+                Error::other(format!(
+                    "Failed to get size of directory: {}",
+                    source.display()
+                ))
             })?;
             writeln!(
                 stream,
@@ -337,11 +342,10 @@ pub fn move_dir(
     // Walk the source, creating directories and copying files as needed
     for entry in WalkDir::new(target).into_iter().filter_map(Result::ok) {
         // Path without the top-level directory
-        let orphan = entry.path().strip_prefix(target).map_err(|_| {
-            Error::other(
-                "Parent directory isn't a prefix of child directories?",
-            )
-        })?;
+        let orphan = entry
+            .path()
+            .strip_prefix(target)
+            .map_err(|_| Error::other("Parent directory isn't a prefix of child directories?"))?;
 
         if entry.file_type().is_dir() {
             fs::create_dir_all(dest.join(orphan)).map_err(|e| {
@@ -470,7 +474,7 @@ pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
 /// Testing module for exposing internal functions to unit tests.
 /// This module is only used for testing purposes and should not be used in production code.
 pub mod testing {
-    use super::{Path, PathBuf, Metadata, Write, Error, should_we_bury_this, util};
+    use super::{should_we_bury_this, util, Error, Metadata, Path, PathBuf, Write};
 
     pub fn testable_should_we_bury_this(
         target: &Path,
