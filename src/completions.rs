@@ -16,8 +16,7 @@ pub fn generate_shell_completions(shell_s: &str, buf: &mut dyn Write) -> Result<
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 format!(
-                    "Invalid shell specification: {}. Available shells: bash, elvish, fish, powershell, zsh, nushell",
-                    shell_s
+                    "Invalid shell specification: {shell_s}. Available shells: bash, elvish, fish, powershell, zsh, nushell"
                 )
             ));
         }
