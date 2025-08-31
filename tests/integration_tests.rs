@@ -17,6 +17,9 @@ use std::{env, ffi, iter};
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 lazy_static! {
     static ref GLOBAL_LOCK: Mutex<()> = Mutex::new(());
 }
@@ -1485,3 +1488,72 @@ fn test_force_inspect_error() {
         .to_string()
         .contains("-f,--force and -i,--inspect cannot be used together"));
 }
+
+#[test]
+#[cfg(unix)]
+fn test_directory_permissions_preserved() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create a private directory with restrictive permissions (700)
+    let private_dir = test_env.src.join("private_dir");
+    fs::create_dir(&private_dir).unwrap();
+
+    // Set restrictive permissions on the directory (700 = rwx------)
+    let mut perms = fs::metadata(&private_dir).unwrap().permissions();
+    perms.set_mode(0o700);
+    fs::set_permissions(&private_dir, perms).unwrap();
+
+    // Create a file inside the private directory
+    let secret_file = private_dir.join("secret.txt");
+    fs::write(&secret_file, "secret content").unwrap();
+
+    // Set normal file permissions (644 = rw-r--r--)
+    let mut file_perms = fs::metadata(&secret_file).unwrap().permissions();
+    file_perms.set_mode(0o644);
+    fs::set_permissions(&secret_file, file_perms).unwrap();
+
+    // Rip the file from within the private directory
+    let result = rip2::run(
+        Args {
+            targets: vec![secret_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+
+    assert!(result.is_ok(), "Failed to rip file: {:?}", result);
+
+    // The file should be moved to the graveyard
+    assert!(!secret_file.exists(), "File should be removed from source");
+
+    // Find the corresponding directory in the graveyard
+    let graveyard_private_dir = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&private_dir).unwrap(),
+    );
+
+    assert!(
+        graveyard_private_dir.exists(),
+        "Graveyard directory should exist"
+    );
+
+    // Check the permissions of the directory in the graveyard
+    let graveyard_perms = fs::metadata(&graveyard_private_dir).unwrap().permissions();
+    let mode = graveyard_perms.mode() & 0o777;
+
+    // CORRECT BEHAVIOR: Directory permissions should be preserved
+    // The directory should maintain its restrictive 700 permissions
+    assert_eq!(
+        mode, 0o700,
+        "Directory permissions should be preserved (expected 700, got {:o})",
+        mode
+    );
+
+    // With correct permissions, the file is protected as it was originally
+    let graveyard_file = graveyard_private_dir.join("secret.txt");
+    assert!(graveyard_file.exists(), "File should exist in graveyard");
+}
+
