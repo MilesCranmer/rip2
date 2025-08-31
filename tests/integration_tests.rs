@@ -1647,3 +1647,109 @@ fn test_deeply_nested_directory_permissions() {
     assert_eq!(mode4, 0o777, "level4 permissions preserved");
 }
 
+#[test]
+#[cfg(unix)]
+fn test_directory_rip_vs_file_rip_permissions() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create two identical directory structures
+    let dir_structure1 = test_env.src.join("test1");
+    let subdir1 = dir_structure1.join("subdir");
+    fs::create_dir(&dir_structure1).unwrap();
+    fs::create_dir(&subdir1).unwrap();
+
+    let dir_structure2 = test_env.src.join("test2");
+    let subdir2 = dir_structure2.join("subdir");
+    fs::create_dir(&dir_structure2).unwrap();
+    fs::create_dir(&subdir2).unwrap();
+
+    // Set 700 permissions on both parent directories
+    let mut perms = fs::metadata(&dir_structure1).unwrap().permissions();
+    perms.set_mode(0o700);
+    fs::set_permissions(&dir_structure1, perms.clone()).unwrap();
+    fs::set_permissions(&dir_structure2, perms).unwrap();
+
+    // Set 750 permissions on subdirectories
+    let mut subperms = fs::metadata(&subdir1).unwrap().permissions();
+    subperms.set_mode(0o750);
+    fs::set_permissions(&subdir1, subperms.clone()).unwrap();
+    fs::set_permissions(&subdir2, subperms).unwrap();
+
+    // Create files in both subdirectories
+    let file1 = subdir1.join("file.txt");
+    let file2 = subdir2.join("file.txt");
+    fs::write(&file1, "content").unwrap();
+    fs::write(&file2, "content").unwrap();
+
+    // Canonicalize paths BEFORE ripping (since they won't exist after)
+    let canonical_dir1 = dunce::canonicalize(&dir_structure1).unwrap();
+    let canonical_dir2 = dunce::canonicalize(&dir_structure2).unwrap();
+
+    // Test 1: Rip the entire directory structure
+    let result1 = rip2::run(
+        Args {
+            targets: vec![dir_structure1.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+    assert!(result1.is_ok(), "Failed to rip directory");
+
+    // Test 2: Rip just the file from the second structure
+    let result2 = rip2::run(
+        Args {
+            targets: vec![file2.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+    assert!(result2.is_ok(), "Failed to rip file");
+
+    // Check permissions for directory rip (should preserve correctly)
+    let graveyard_dir1 = util::join_absolute(&test_env.graveyard, canonical_dir1);
+    let graveyard_subdir1 = graveyard_dir1.join("subdir");
+
+    let dir1_mode = fs::metadata(&graveyard_dir1).unwrap().permissions().mode() & 0o777;
+    let subdir1_mode = fs::metadata(&graveyard_subdir1)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // When ripping entire directory, permissions ARE preserved
+    assert_eq!(
+        dir1_mode, 0o700,
+        "Directory rip preserves parent permissions"
+    );
+    assert_eq!(
+        subdir1_mode, 0o750,
+        "Directory rip preserves subdir permissions"
+    );
+
+    // Check permissions for file rip (should preserve parent correctly)
+    let graveyard_dir2 = util::join_absolute(&test_env.graveyard, canonical_dir2);
+    let graveyard_subdir2 = graveyard_dir2.join("subdir");
+
+    let dir2_mode = fs::metadata(&graveyard_dir2).unwrap().permissions().mode() & 0o777;
+    let subdir2_mode = fs::metadata(&graveyard_subdir2)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // File rip ALSO preserves parent directory permissions correctly
+    assert_eq!(
+        dir2_mode, 0o700,
+        "File rip preserves parent permissions correctly"
+    );
+
+    assert_eq!(
+        subdir2_mode, 0o750,
+        "File rip preserves subdirectory permissions correctly"
+    );
+}
