@@ -122,7 +122,7 @@ fn test_filetypes(
             assert!(log_s.contains("Permanently delete the file?"));
         }
         _ => {
-            assert!(log_s.is_empty())
+            assert!(log_s.is_empty());
         }
     }
 
@@ -148,7 +148,7 @@ fn test_filetypes(
 
                 // … and keep the exact 0o700 mode.
                 let mode_bits = meta.permissions().mode() & 0o777;
-                assert_eq!(mode_bits, 0o700, "expected mode 0700, got {:o}", mode_bits);
+                assert_eq!(mode_bits, 0o700, "expected mode 0700, got {mode_bits:o}");
             }
         }
         "symlink" => {
