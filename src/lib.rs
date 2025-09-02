@@ -400,6 +400,8 @@ pub fn move_target(
     // If that didn't work, then we need to copy and rm.
     if let Some(dirs) = dirs_to_create {
         create_dirs_with_permissions(dirs)?;
+    } else if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
     }
 
     if fs::symlink_metadata(target)?.is_dir() {
