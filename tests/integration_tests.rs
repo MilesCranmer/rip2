@@ -1752,3 +1752,60 @@ fn test_directory_rip_vs_file_rip_permissions() {
         "File rip preserves subdirectory permissions correctly"
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn test_graveyard_maintains_700_permissions() {
+    // This test ensures that the graveyard directory maintains its 700 permissions
+    // even when files are moved from directories with different permissions (like 755).
+    // This is critical for security - the graveyard should only be accessible by the owner.
+    
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    
+    // Create a source file in a directory with 755 permissions (standard permissions)
+    let source_dir = test_env.src.join("public_dir");
+    fs::create_dir_all(&source_dir).unwrap();
+    
+    // Explicitly set the source directory to 755 to ensure we're testing the right scenario
+    let mut perms = fs::metadata(&source_dir).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&source_dir, perms).unwrap();
+    
+    let test_file = source_dir.join("test.txt");
+    fs::write(&test_file, "test content").unwrap();
+    
+    // Canonicalize the path BEFORE ripping (since it won't exist after)
+    let canonical_test_file = dunce::canonicalize(&test_file).unwrap();
+    
+    // Run rip to move the file to the graveyard
+    let result = rip2::run(
+        &Args {
+            targets: vec![test_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+    
+    assert!(result.is_ok(), "Failed to rip file");
+    
+    // Check that the graveyard exists and has 700 permissions
+    assert!(test_env.graveyard.exists(), "Graveyard should exist");
+    
+    let graveyard_perms = fs::metadata(&test_env.graveyard)
+        .unwrap()
+        .permissions()
+        .mode() & 0o777;
+    
+    assert_eq!(
+        graveyard_perms, 0o700,
+        "Graveyard should have 700 permissions (drwx------), but has {:o}",
+        graveyard_perms
+    );
+    
+    // Also verify that files were successfully moved into the graveyard
+    let dest_path = util::join_absolute(&test_env.graveyard, canonical_test_file);
+    assert!(dest_path.exists(), "File should be moved to graveyard");
+}
