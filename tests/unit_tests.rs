@@ -107,17 +107,7 @@ fn test_filetypes(
     if copy {
         rip2::copy_file(&source_path, &dest_path, &mode, &mut log, false).unwrap();
     } else {
-        let dirs_to_create = Vec::new();
-        rip2::move_target(
-            &source_path,
-            &dest_path,
-            true,
-            &mode,
-            &mut log,
-            false,
-            &dirs_to_create,
-        )
-        .unwrap();
+        rip2::move_target(&source_path, &dest_path, true, &mode, &mut log, false, None).unwrap();
     }
 
     let log_s = String::from_utf8(log).unwrap();
