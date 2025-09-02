@@ -10,11 +10,11 @@ use walkdir::WalkDir;
 #[derive(Debug, Clone)]
 pub struct DirToCreate {
     pub path: PathBuf,
-    pub permissions: fs::Permissions,
+    pub permissions: Option<fs::Permissions>,
 }
 
 impl DirToCreate {
-    fn new(path: PathBuf, permissions: fs::Permissions) -> Self {
+    fn new(path: PathBuf, permissions: Option<fs::Permissions>) -> Self {
         Self { path, permissions }
     }
 }
@@ -103,6 +103,8 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
             } else {
                 PathBuf::from(&entry.orig)
             };
+            let dirs_to_create = build_dirs_to_create_from_graveyard(&entry.dest, &orig);
+
             move_target(
                 &entry.dest,
                 &orig,
@@ -110,7 +112,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
                 &mode,
                 stream,
                 cli.force,
-                None,
+                &dirs_to_create,
             )
             .map_err(|e| {
                 Error::new(
@@ -236,7 +238,7 @@ fn bury_target<const FILE_LOCK: bool>(
             mode,
             stream,
             force,
-            Some(&dirs_to_create),
+            &dirs_to_create,
         )
         .map_err(|e| {
             fs::remove_dir_all(dest).ok();
@@ -326,16 +328,40 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
-            // Track directory permissions if this component was added to dest
-            if let Ok(metadata) = fs::metadata(&cumulative_source) {
-                if metadata.is_dir() {
-                    dirs_to_create.push(DirToCreate::new(dest.clone(), metadata.permissions()));
-                }
+            // Only add directories to the list (skip the final file component)
+            if cumulative_source.is_dir() {
+                let permissions = fs::metadata(&cumulative_source)
+                    .map(|m| m.permissions())
+                    .ok();
+                dirs_to_create.push(DirToCreate::new(dest.clone(), permissions));
             }
         }
     }
 
     (dest, dirs_to_create)
+}
+
+/// Build directory structure with permissions from graveyard for unbury
+fn build_dirs_to_create_from_graveyard(
+    graveyard_path: &Path,
+    orig_path: &Path,
+) -> Vec<DirToCreate> {
+    let mut dirs_to_create = Vec::new();
+
+    // Walk from file to root and collect permissions to propagate
+    let mut graveyard_current = graveyard_path.parent();
+    let mut orig_current = orig_path.parent();
+
+    while let (Some(g), Some(o)) = (graveyard_current, orig_current) {
+        let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
+        dirs_to_create.push(DirToCreate::new(o.to_path_buf(), permissions));
+
+        // Move up one level
+        graveyard_current = g.parent();
+        orig_current = o.parent();
+    }
+    dirs_to_create.reverse();
+    dirs_to_create
 }
 
 /// Create directories with specified permissions
@@ -366,13 +392,15 @@ fn create_dirs_with_permissions(dirs_to_create: &[DirToCreate]) -> Result<(), Er
                     )
                 })?;
 
-            // Set the permissions
-            fs::set_permissions(&dir.path, dir.permissions.clone()).map_err(|e| {
-                Error::new(
-                    e.kind(),
-                    format!("Failed to set permissions on {}: {}", dir.path.display(), e),
-                )
-            })?;
+            // Set permissions if we have them
+            if let Some(perms) = &dir.permissions {
+                fs::set_permissions(&dir.path, perms.clone()).map_err(|e| {
+                    Error::new(
+                        e.kind(),
+                        format!("Failed to set permissions on {}: {}", dir.path.display(), e),
+                    )
+                })?;
+            }
         }
     }
 
@@ -389,7 +417,7 @@ pub fn move_target(
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
     force: bool,
-    dirs_to_create: Option<&[DirToCreate]>,
+    dirs_to_create: &[DirToCreate],
 ) -> Result<bool, Error> {
     // Try a simple rename, which will only work within the same mount point.
     // Trying to rename across filesystems will throw errno 18.
@@ -398,11 +426,7 @@ pub fn move_target(
     }
 
     // If that didn't work, then we need to copy and rm.
-    if let Some(dirs) = dirs_to_create {
-        create_dirs_with_permissions(dirs)?;
-    } else if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    create_dirs_with_permissions(dirs_to_create)?;
 
     if fs::symlink_metadata(target)?.is_dir() {
         move_dir(target, dest, mode, stream, force)
