@@ -13,12 +13,6 @@ pub struct DirToCreate {
     pub permissions: Option<fs::Permissions>,
 }
 
-impl DirToCreate {
-    fn new(path: PathBuf, permissions: Option<fs::Permissions>) -> Self {
-        Self { path, permissions }
-    }
-}
-
 // Platform-specific imports
 #[cfg(unix)]
 use nix::libc;
@@ -316,7 +310,7 @@ fn should_we_bury_this(
     )
 }
 
-/// Build destination path and collect directory permissions to preserve
+/// Plan graveyard directory structure and permissions
 fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToCreate>) {
     let mut dest = graveyard.to_path_buf();
     let mut dirs_to_create = Vec::new();
@@ -333,7 +327,10 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
                 let permissions = fs::metadata(&cumulative_source)
                     .map(|m| m.permissions())
                     .ok();
-                dirs_to_create.push(DirToCreate::new(dest.clone(), permissions));
+                dirs_to_create.push(DirToCreate {
+                    path: dest.clone(),
+                    permissions,
+                });
             }
         }
     }
@@ -341,7 +338,7 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
     (dest, dirs_to_create)
 }
 
-/// Build directory structure with permissions from graveyard for unbury
+/// Plan source directory structure and permissions
 fn build_dirs_to_create_from_graveyard(
     graveyard_path: &Path,
     orig_path: &Path,
@@ -354,7 +351,10 @@ fn build_dirs_to_create_from_graveyard(
 
     while let (Some(g), Some(o)) = (graveyard_current, orig_current) {
         let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
-        dirs_to_create.push(DirToCreate::new(o.to_path_buf(), permissions));
+        dirs_to_create.push(DirToCreate {
+            path: o.to_path_buf(),
+            permissions,
+        });
 
         // Move up one level
         graveyard_current = g.parent();
