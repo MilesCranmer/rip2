@@ -1810,3 +1810,80 @@ fn test_graveyard_maintains_700_permissions() {
     let dest_path = util::join_absolute(&test_env.graveyard, canonical_test_file);
     assert!(dest_path.exists(), "File should be moved to graveyard");
 }
+
+#[rstest]
+#[cfg(unix)]
+fn test_unbury_directory_permissions(
+    #[values(
+        false,  // restore_permissions: delete dir, check perms restored  
+        true,   // preserve_existing: keep dir, change perms
+    )]
+    keep_dir: bool,
+) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Setup directory with permissions
+    let dir = test_env.src.join("test_dir");
+    let subdir = dir.join("sub");
+    fs::create_dir(&dir).unwrap();
+    fs::create_dir(&subdir).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&subdir, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let file = subdir.join("file.txt");
+    fs::write(&file, "test").unwrap();
+
+    // Bury file
+    rip2::run(
+        &Args {
+            targets: vec![file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    )
+    .unwrap();
+
+    if keep_dir {
+        // Change permissions while dir exists
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&subdir, fs::Permissions::from_mode(0o755)).unwrap();
+    } else {
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // Unbury
+    rip2::run(
+        &Args {
+            unbury: Some(vec![]),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    )
+    .unwrap();
+
+    assert!(file.exists(), "File should be restored");
+
+    let dir_mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    let sub_mode = fs::metadata(&subdir).unwrap().permissions().mode() & 0o777;
+
+    if keep_dir {
+        assert_eq!(dir_mode, 0o755, "Should keep current permissions");
+        assert_eq!(sub_mode, 0o755, "Should keep current permissions");
+    } else {
+        assert_eq!(
+            dir_mode, 0o755,
+            "Should restore permissions (got {:o})",
+            dir_mode
+        );
+        assert_eq!(
+            sub_mode, 0o700,
+            "Should restore permissions (got {:o})",
+            sub_mode
+        );
+    }
+}
