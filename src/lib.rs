@@ -90,18 +90,26 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
             } else {
                 PathBuf::from(&entry.orig)
             };
-            move_target(&entry.dest, &orig, allow_rename, &mode, stream, cli.force).map_err(
-                |e| {
-                    Error::new(
-                        e.kind(),
-                        format!(
-                            "Unbury failed: couldn't copy files from {} to {}",
-                            entry.dest.display(),
-                            orig.display()
-                        ),
-                    )
-                },
-            )?;
+            let dirs_to_create = Vec::new(); // For unbury, we don't need special permission handling
+            move_target(
+                &entry.dest,
+                &orig,
+                allow_rename,
+                &mode,
+                stream,
+                cli.force,
+                &dirs_to_create,
+            )
+            .map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!(
+                        "Unbury failed: couldn't copy files from {} to {}",
+                        entry.dest.display(),
+                        orig.display()
+                    ),
+                )
+            })?;
             writeln!(
                 stream,
                 "Returned {} to {}",
@@ -199,8 +207,8 @@ fn bury_target<const FILE_LOCK: bool>(
             // (meaning a `continue` in the original code's loop). But I'm not sure.
         }
     } else {
+        let (dest, dirs_to_create) = build_graveyard_dest(graveyard, source);
         let dest: &Path = &{
-            let dest = util::join_absolute(graveyard, source);
             // Resolve a name conflict if necessary
             if util::symlink_exists(&dest) {
                 util::rename_grave(dest)
@@ -209,7 +217,16 @@ fn bury_target<const FILE_LOCK: bool>(
             }
         };
 
-        let moved = move_target(source, dest, allow_rename, mode, stream, force).map_err(|e| {
+        let moved = move_target(
+            source,
+            dest,
+            allow_rename,
+            mode,
+            stream,
+            force,
+            &dirs_to_create,
+        )
+        .map_err(|e| {
             fs::remove_dir_all(dest).ok();
             Error::new(e.kind(), "Failed to bury file")
         })?;
@@ -285,66 +302,70 @@ fn should_we_bury_this(
     )
 }
 
-/// Create directories preserving permissions from the source path
-fn create_dirs_with_permissions(source: &Path, dest: &Path) -> Result<(), Error> {
-    // Get the common prefix and the parts that need to be created
-    let dest_parent = dest
-        .parent()
-        .ok_or_else(|| Error::new(ErrorKind::NotFound, "Could not get parent of dest!"))?;
+/// Build destination path and collect directory permissions to preserve
+fn build_graveyard_dest(
+    graveyard: &Path,
+    source: &Path,
+) -> (PathBuf, Vec<(PathBuf, fs::Permissions)>) {
+    let mut dest = graveyard.to_path_buf();
+    let mut dirs_to_create = Vec::new();
+    let mut cumulative_source = PathBuf::new();
 
-    // First create all directories
-    fs::create_dir_all(dest_parent)?;
+    for component in source.components() {
+        // Build cumulative source path
+        cumulative_source.push(component.as_os_str());
 
-    // Now walk the source path and apply permissions to corresponding dest directories
-    let source_parent = source.parent();
-    if let Some(src_parent) = source_parent {
-        // Build up the path components from source
-        let mut src_components = Vec::new();
-        let mut current = src_parent;
-        while let Some(parent) = current.parent() {
-            src_components.push(current);
-            current = parent;
+        // Process component for destination using shared logic
+        if util::push_component_to_dest(&mut dest, &component) {
+            // Track directory permissions if this component was added to dest
+            if let Ok(metadata) = fs::metadata(&cumulative_source) {
+                if metadata.is_dir() {
+                    dirs_to_create.push((dest.clone(), metadata.permissions()));
+                }
+            }
         }
-        src_components.push(current); // Add the root
-        src_components.reverse();
+    }
 
-        // Build up the path components from dest
-        let mut dest_components = Vec::new();
-        let mut current = dest_parent;
-        while let Some(parent) = current.parent() {
-            dest_components.push(current);
-            current = parent;
-        }
-        dest_components.push(current); // Add the root
-        dest_components.reverse();
+    (dest, dirs_to_create)
+}
 
-        // Apply permissions where we have matching source paths
-        let src_len = src_components.len();
-        let dest_len = dest_components.len();
-        if dest_len >= src_len {
-            let offset = dest_len - src_len;
-            src_components
-                .iter()
-                .enumerate()
-                .filter_map(|(i, &src_path)| {
-                    fs::metadata(src_path)
-                        .ok()
-                        .filter(|meta| meta.is_dir())
-                        .map(|meta| (dest_components[i + offset], meta.permissions()))
+/// Create directories with specified permissions
+fn create_dirs_with_permissions(
+    dirs_to_create: &[(PathBuf, fs::Permissions)],
+) -> Result<(), Error> {
+    // Create directories one by one in order (parent to child)
+    // This assumes dirs_to_create is ordered from root to leaf
+    for (dir_path, permissions) in dirs_to_create {
+        if !dir_path.exists() {
+            // Create just this directory (parent should already exist)
+            fs::create_dir(dir_path)
+                .or_else(|e| {
+                    // If parent doesn't exist, create it with default permissions
+                    if e.kind() == ErrorKind::NotFound {
+                        if let Some(parent) = dir_path.parent() {
+                            fs::create_dir_all(parent)?;
+                            fs::create_dir(dir_path)
+                        } else {
+                            Err(e)
+                        }
+                    } else {
+                        Err(e)
+                    }
                 })
-                .filter(|(dest_dir, _)| dest_dir.exists())
-                .try_for_each(|(dest_dir, perms)| {
-                    fs::set_permissions(dest_dir, perms).map_err(|e| {
-                        Error::new(
-                            e.kind(),
-                            format!(
-                                "Failed to preserve permissions on directory '{}': {}. The directory may be owned by another user.",
-                                dest_dir.display(),
-                                e
-                            ),
-                        )
-                    })
+                .map_err(|e| {
+                    Error::new(
+                        e.kind(),
+                        format!("Failed to create directory {}: {}", dir_path.display(), e),
+                    )
                 })?;
+
+            // Set the permissions
+            fs::set_permissions(dir_path, permissions.clone()).map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!("Failed to set permissions on {}: {}", dir_path.display(), e),
+                )
+            })?;
         }
     }
 
@@ -361,6 +382,7 @@ pub fn move_target(
     mode: &impl util::TestingMode,
     stream: &mut impl Write,
     force: bool,
+    dirs_to_create: &[(PathBuf, fs::Permissions)],
 ) -> Result<bool, Error> {
     // Try a simple rename, which will only work within the same mount point.
     // Trying to rename across filesystems will throw errno 18.
@@ -369,7 +391,7 @@ pub fn move_target(
     }
 
     // If that didn't work, then we need to copy and rm.
-    create_dirs_with_permissions(target, dest)?;
+    create_dirs_with_permissions(dirs_to_create)?;
 
     if fs::symlink_metadata(target)?.is_dir() {
         move_dir(target, dest, mode, stream, force)
