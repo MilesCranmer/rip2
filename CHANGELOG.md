@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.5](https://github.com/MilesCranmer/rip2/compare/v0.9.4...v0.9.5) (2025-09-03)
+
+
+### Features
+
+* generate error on failed permission propagation ([7cf66d9](https://github.com/MilesCranmer/rip2/commit/7cf66d94cb15b82bec7b6fa50f286447a4151dfd))
+
+
+### Bug Fixes
+
+* ensure we recreate permissions unburying ([e6b147a](https://github.com/MilesCranmer/rip2/commit/e6b147ab50fb3f448a6ea5e6a066fddf6af18c18))
+* force setting permissions to 700 ([65a022d](https://github.com/MilesCranmer/rip2/commit/65a022d8dc1790c6b33ba5ac0da744e34dcb5d19))
+* missing parent dirs if option None ([88341ce](https://github.com/MilesCranmer/rip2/commit/88341cee322710fa57726fb2145b120bc492589e))
+* propagate parent directory permissions to graveyard ([72a0d76](https://github.com/MilesCranmer/rip2/commit/72a0d765d8645bb38c8e8c27284ae246813a2810))
+
 ## [0.9.4](https://github.com/MilesCranmer/rip2/compare/v0.9.3...v0.9.4) (2025-04-20)
 
 
