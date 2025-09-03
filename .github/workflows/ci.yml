@@ -47,7 +47,7 @@ jobs:
         rust-version:
           - stable
     env:
-      HAS_COVERALLS_ACCESS: ${{ secrets.COVERALLS_REPO_TOKEN != '' }}
+      HAS_CODECOV_ACCESS: ${{ secrets.CODECOV_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,8 +57,9 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin
+      - name: Install cargo-llvm-cov
+        if: env.HAS_CODECOV_ACCESS == 'true'
+        run: cargo install cargo-llvm-cov
       - name: Test compilation
         run: cargo check --all --all-targets
       - name: Test formatting
@@ -68,10 +69,19 @@ jobs:
       - name: Test documentation
         run: cargo doc --all --no-deps
       - name: Run tests with code coverage
-        if: ${{ env.HAS_COVERALLS_ACCESS == 'true' }}
-        run: cargo tarpaulin --release --engine llvm --follow-exec --post-test-delay 10 --coveralls ${{ secrets.COVERALLS_REPO_TOKEN }}
+        if: env.HAS_CODECOV_ACCESS == 'true'
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Upload coverage to Codecov
+        if: env.HAS_CODECOV_ACCESS == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: MilesCranmer/rip2
+          files: ./codecov.json
+          fail_ci_if_error: false
+          verbose: true
       - name: Run tests
-        if: ${{ env.HAS_COVERALLS_ACCESS != 'true' }}
+        if: env.HAS_CODECOV_ACCESS != 'true'
         run: cargo test --all
 
   nix:

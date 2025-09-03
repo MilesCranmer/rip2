@@ -1,0 +1,21 @@
+codecov:
+  notify:
+    require_ci_to_pass: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+    patch:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+
+comment:
+  layout: "reach,diff,flags,tree,betaprofiling"
+  behavior: default
+  require_changes: false
