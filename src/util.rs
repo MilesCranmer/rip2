@@ -12,7 +12,7 @@ fn hash_component(c: &Component) -> String {
     c.hash(&mut hasher);
     format!("{:x}", hasher.finish())
 }
-fn str_component(c: &Component) -> String {
+pub fn str_component(c: &Component) -> String {
     match c {
         Component::Prefix(prefix) => match prefix.kind() {
             // C:\\ is the most common, so we just make a readable name for it.
@@ -23,23 +23,31 @@ fn str_component(c: &Component) -> String {
     }
 }
 
+/// Process a path component and push it to the destination if needed
+/// Returns true if the component was pushed, false if it was skipped
+pub fn push_component_to_dest(dest: &mut PathBuf, component: &Component) -> bool {
+    match component {
+        Component::RootDir => false, // Skip root dir
+        Component::Prefix(_) => {
+            // Hash the prefix component.
+            // We do this because there are many ways to get prefix components
+            // on Windows, so its safer to simply hash it.
+            dest.push(str_component(component));
+            true
+        }
+        _ => {
+            dest.push(component);
+            true
+        }
+    }
+}
+
 /// Concatenate two paths, even if the right argument is an absolute path.
 pub fn join_absolute<A: AsRef<Path>, B: AsRef<Path>>(left: A, right: B) -> PathBuf {
     let (left, right) = (left.as_ref(), right.as_ref());
     let mut result = left.to_path_buf();
     for c in right.components() {
-        match c {
-            Component::RootDir => {}
-            Component::Prefix(_) => {
-                // Hash the prefix component.
-                // We do this because there are many ways to get prefix components
-                // on Windows, so its safer to simply hash it.
-                result.push(str_component(&c));
-            }
-            _ => {
-                result.push(c);
-            }
-        }
+        push_component_to_dest(&mut result, &c);
     }
     result
 }

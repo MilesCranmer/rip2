@@ -17,6 +17,9 @@ use std::{env, ffi, iter};
 use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 lazy_static! {
     static ref GLOBAL_LOCK: Mutex<()> = Mutex::new(());
 }
@@ -1483,4 +1486,404 @@ fn test_force_inspect_error() {
     assert!(err
         .to_string()
         .contains("-f,--force and -i,--inspect cannot be used together"));
+}
+
+#[test]
+#[cfg(unix)]
+fn test_directory_permissions_preserved() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create a private directory with restrictive permissions (700)
+    let private_dir = test_env.src.join("private_dir");
+    fs::create_dir(&private_dir).unwrap();
+
+    // Set restrictive permissions on the directory (700 = rwx------)
+    let mut perms = fs::metadata(&private_dir).unwrap().permissions();
+    perms.set_mode(0o700);
+    fs::set_permissions(&private_dir, perms).unwrap();
+
+    // Create a file inside the private directory
+    let secret_file = private_dir.join("secret.txt");
+    fs::write(&secret_file, "secret content").unwrap();
+
+    // Set normal file permissions (644 = rw-r--r--)
+    let mut file_perms = fs::metadata(&secret_file).unwrap().permissions();
+    file_perms.set_mode(0o644);
+    fs::set_permissions(&secret_file, file_perms).unwrap();
+
+    // Rip the file from within the private directory
+    let result = rip2::run(
+        &Args {
+            targets: vec![secret_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+
+    assert!(result.is_ok(), "Failed to rip file: {:?}", result);
+
+    // The file should be moved to the graveyard
+    assert!(!secret_file.exists(), "File should be removed from source");
+
+    // Find the corresponding directory in the graveyard
+    let graveyard_private_dir = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&private_dir).unwrap(),
+    );
+
+    assert!(
+        graveyard_private_dir.exists(),
+        "Graveyard directory should exist"
+    );
+
+    // Check the permissions of the directory in the graveyard
+    let graveyard_perms = fs::metadata(&graveyard_private_dir).unwrap().permissions();
+    let mode = graveyard_perms.mode() & 0o777;
+
+    // CORRECT BEHAVIOR: Directory permissions should be preserved
+    // The directory should maintain its restrictive 700 permissions
+    assert_eq!(
+        mode, 0o700,
+        "Directory permissions should be preserved (expected 700, got {:o})",
+        mode
+    );
+
+    // With correct permissions, the file is protected as it was originally
+    let graveyard_file = graveyard_private_dir.join("secret.txt");
+    assert!(graveyard_file.exists(), "File should exist in graveyard");
+}
+
+#[test]
+#[cfg(unix)]
+fn test_deeply_nested_directory_permissions() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create deeply nested directories with alternating permissions
+    let level1 = test_env.src.join("level1_700");
+    let level2 = level1.join("level2_755");
+    let level3 = level2.join("level3_701");
+    let level4 = level3.join("level4_777");
+
+    fs::create_dir(&level1).unwrap();
+    fs::create_dir(&level2).unwrap();
+    fs::create_dir(&level3).unwrap();
+    fs::create_dir(&level4).unwrap();
+
+    // Set different permissions at each level
+    let mut perms1 = fs::metadata(&level1).unwrap().permissions();
+    perms1.set_mode(0o700);
+    fs::set_permissions(&level1, perms1).unwrap();
+
+    let mut perms2 = fs::metadata(&level2).unwrap().permissions();
+    perms2.set_mode(0o755);
+    fs::set_permissions(&level2, perms2).unwrap();
+
+    let mut perms3 = fs::metadata(&level3).unwrap().permissions();
+    perms3.set_mode(0o701);
+    fs::set_permissions(&level3, perms3).unwrap();
+
+    let mut perms4 = fs::metadata(&level4).unwrap().permissions();
+    perms4.set_mode(0o777);
+    fs::set_permissions(&level4, perms4).unwrap();
+
+    // Create a file at the deepest level
+    let deep_file = level4.join("deep.txt");
+    fs::write(&deep_file, "deep content").unwrap();
+
+    // Rip the deeply nested file
+    let result = rip2::run(
+        &Args {
+            targets: vec![deep_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+
+    assert!(result.is_ok(), "Failed to rip file");
+
+    // Check permissions at each level in the graveyard
+    let graveyard_level1 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level1).unwrap());
+    let graveyard_level2 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level2).unwrap());
+    let graveyard_level3 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level3).unwrap());
+    let graveyard_level4 =
+        util::join_absolute(&test_env.graveyard, dunce::canonicalize(&level4).unwrap());
+
+    // Actually all permissions ARE preserved correctly!
+    let mode1 = fs::metadata(&graveyard_level1)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode2 = fs::metadata(&graveyard_level2)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode3 = fs::metadata(&graveyard_level3)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mode4 = fs::metadata(&graveyard_level4)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // All directory permissions are preserved
+    assert_eq!(mode1, 0o700, "level1 permissions preserved");
+    assert_eq!(mode2, 0o755, "level2 permissions preserved");
+    assert_eq!(mode3, 0o701, "level3 permissions preserved");
+    assert_eq!(mode4, 0o777, "level4 permissions preserved");
+}
+
+#[test]
+#[cfg(unix)]
+fn test_directory_rip_vs_file_rip_permissions() {
+    let _lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create two identical directory structures
+    let dir_structure1 = test_env.src.join("test1");
+    let subdir1 = dir_structure1.join("subdir");
+    fs::create_dir(&dir_structure1).unwrap();
+    fs::create_dir(&subdir1).unwrap();
+
+    let dir_structure2 = test_env.src.join("test2");
+    let subdir2 = dir_structure2.join("subdir");
+    fs::create_dir(&dir_structure2).unwrap();
+    fs::create_dir(&subdir2).unwrap();
+
+    // Set 700 permissions on both parent directories
+    let mut perms = fs::metadata(&dir_structure1).unwrap().permissions();
+    perms.set_mode(0o700);
+    fs::set_permissions(&dir_structure1, perms.clone()).unwrap();
+    fs::set_permissions(&dir_structure2, perms).unwrap();
+
+    // Set 750 permissions on subdirectories
+    let mut subperms = fs::metadata(&subdir1).unwrap().permissions();
+    subperms.set_mode(0o750);
+    fs::set_permissions(&subdir1, subperms.clone()).unwrap();
+    fs::set_permissions(&subdir2, subperms).unwrap();
+
+    // Create files in both subdirectories
+    let file1 = subdir1.join("file.txt");
+    let file2 = subdir2.join("file.txt");
+    fs::write(&file1, "content").unwrap();
+    fs::write(&file2, "content").unwrap();
+
+    // Canonicalize paths BEFORE ripping (since they won't exist after)
+    let canonical_dir1 = dunce::canonicalize(&dir_structure1).unwrap();
+    let canonical_dir2 = dunce::canonicalize(&dir_structure2).unwrap();
+
+    // Test 1: Rip the entire directory structure
+    let result1 = rip2::run(
+        &Args {
+            targets: vec![dir_structure1.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+    assert!(result1.is_ok(), "Failed to rip directory");
+
+    // Test 2: Rip just the file from the second structure
+    let result2 = rip2::run(
+        &Args {
+            targets: vec![file2.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+    assert!(result2.is_ok(), "Failed to rip file");
+
+    // Check permissions for directory rip (should preserve correctly)
+    let graveyard_dir1 = util::join_absolute(&test_env.graveyard, canonical_dir1);
+    let graveyard_subdir1 = graveyard_dir1.join("subdir");
+
+    let dir1_mode = fs::metadata(&graveyard_dir1).unwrap().permissions().mode() & 0o777;
+    let subdir1_mode = fs::metadata(&graveyard_subdir1)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // When ripping entire directory, permissions ARE preserved
+    assert_eq!(
+        dir1_mode, 0o700,
+        "Directory rip preserves parent permissions"
+    );
+    assert_eq!(
+        subdir1_mode, 0o750,
+        "Directory rip preserves subdir permissions"
+    );
+
+    // Check permissions for file rip (should preserve parent correctly)
+    let graveyard_dir2 = util::join_absolute(&test_env.graveyard, canonical_dir2);
+    let graveyard_subdir2 = graveyard_dir2.join("subdir");
+
+    let dir2_mode = fs::metadata(&graveyard_dir2).unwrap().permissions().mode() & 0o777;
+    let subdir2_mode = fs::metadata(&graveyard_subdir2)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    // File rip ALSO preserves parent directory permissions correctly
+    assert_eq!(
+        dir2_mode, 0o700,
+        "File rip preserves parent permissions correctly"
+    );
+
+    assert_eq!(
+        subdir2_mode, 0o750,
+        "File rip preserves subdirectory permissions correctly"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn test_graveyard_maintains_700_permissions() {
+    // This test ensures that the graveyard directory maintains its 700 permissions
+    // even when files are moved from directories with different permissions (like 755).
+    // This is critical for security - the graveyard should only be accessible by the owner.
+
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Create a source file in a directory with 755 permissions (standard permissions)
+    let source_dir = test_env.src.join("public_dir");
+    fs::create_dir_all(&source_dir).unwrap();
+
+    // Explicitly set the source directory to 755 to ensure we're testing the right scenario
+    let mut perms = fs::metadata(&source_dir).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&source_dir, perms).unwrap();
+
+    let test_file = source_dir.join("test.txt");
+    fs::write(&test_file, "test content").unwrap();
+
+    // Canonicalize the path BEFORE ripping (since it won't exist after)
+    let canonical_test_file = dunce::canonicalize(&test_file).unwrap();
+
+    // Run rip to move the file to the graveyard
+    let result = rip2::run(
+        &Args {
+            targets: vec![test_file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    );
+
+    assert!(result.is_ok(), "Failed to rip file");
+
+    // Check that the graveyard exists and has 700 permissions
+    assert!(test_env.graveyard.exists(), "Graveyard should exist");
+
+    let graveyard_perms = fs::metadata(&test_env.graveyard)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(
+        graveyard_perms, 0o700,
+        "Graveyard should have 700 permissions (drwx------), but has {:o}",
+        graveyard_perms
+    );
+
+    // Also verify that files were successfully moved into the graveyard
+    let dest_path = util::join_absolute(&test_env.graveyard, canonical_test_file);
+    assert!(dest_path.exists(), "File should be moved to graveyard");
+}
+
+#[rstest]
+#[cfg(unix)]
+fn test_unbury_directory_permissions(
+    #[values(
+        false,  // restore_permissions: delete dir, check perms restored  
+        true,   // preserve_existing: keep dir, change perms
+    )]
+    keep_dir: bool,
+) {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // Setup directory with permissions
+    let dir = test_env.src.join("test_dir");
+    let subdir = dir.join("sub");
+    fs::create_dir(&dir).unwrap();
+    fs::create_dir(&subdir).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&subdir, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let file = subdir.join("file.txt");
+    fs::write(&file, "test").unwrap();
+
+    // Bury file
+    rip2::run(
+        &Args {
+            targets: vec![file.clone()],
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    )
+    .unwrap();
+
+    if keep_dir {
+        // Change permissions while dir exists
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&subdir, fs::Permissions::from_mode(0o755)).unwrap();
+    } else {
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // Unbury
+    rip2::run(
+        &Args {
+            unbury: Some(vec![]),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut Vec::new(),
+    )
+    .unwrap();
+
+    assert!(file.exists(), "File should be restored");
+
+    let dir_mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    let sub_mode = fs::metadata(&subdir).unwrap().permissions().mode() & 0o777;
+
+    if keep_dir {
+        assert_eq!(dir_mode, 0o755, "Should keep current permissions");
+        assert_eq!(sub_mode, 0o755, "Should keep current permissions");
+    } else {
+        assert_eq!(
+            dir_mode, 0o755,
+            "Should restore permissions (got {:o})",
+            dir_mode
+        );
+        assert_eq!(
+            sub_mode, 0o700,
+            "Should restore permissions (got {:o})",
+            sub_mode
+        );
+    }
 }
