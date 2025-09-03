@@ -6,7 +6,7 @@
 
 [![crates](https://img.shields.io/crates/v/rip2.svg)](https://crates.io/crates/rip2)
 [![CI](https://github.com/MilesCranmer/rip2/actions/workflows/ci.yml/badge.svg)](https://github.com/MilesCranmer/rip2/actions/workflows/ci.yml)
-[![Coverage Status](https://coveralls.io/repos/github/MilesCranmer/rip2/badge.svg?branch=master)](https://coveralls.io/github/MilesCranmer/rip2?branch=master)
+[![codecov](https://codecov.io/gh/MilesCranmer/rip2/graph/badge.svg?token=1Ezb7PjJ0Z)](https://codecov.io/gh/MilesCranmer/rip2)
 
 </div>
 
