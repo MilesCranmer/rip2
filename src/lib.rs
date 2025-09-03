@@ -371,26 +371,12 @@ fn create_dirs_with_permissions(dirs_to_create: &[DirToCreate]) -> Result<(), Er
     for dir in dirs_to_create {
         if !dir.path.exists() {
             // Create just this directory (parent should already exist)
-            fs::create_dir(&dir.path)
-                .or_else(|e| {
-                    // If parent doesn't exist, create it with default permissions
-                    if e.kind() == ErrorKind::NotFound {
-                        if let Some(parent) = dir.path.parent() {
-                            fs::create_dir_all(parent)?;
-                            fs::create_dir(&dir.path)
-                        } else {
-                            Err(e)
-                        }
-                    } else {
-                        Err(e)
-                    }
-                })
-                .map_err(|e| {
-                    Error::new(
-                        e.kind(),
-                        format!("Failed to create directory {}: {}", dir.path.display(), e),
-                    )
-                })?;
+            fs::create_dir(&dir.path).map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!("Failed to create directory {}: {}", dir.path.display(), e),
+                )
+            })?;
 
             // Set permissions if we have them
             if let Some(perms) = &dir.permissions {
