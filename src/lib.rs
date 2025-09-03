@@ -47,12 +47,8 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
 
         #[cfg(unix)]
         {
-            let metadata = graveyard.metadata()?;
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(0o700);
-            fs::set_permissions(graveyard, permissions)?;
+            fs::set_permissions(graveyard, fs::Permissions::from_mode(0o700))?;
         }
-        // TODO: Default permissions on windows should be good, but need to double-check.
     }
 
     // Stores the deleted files
