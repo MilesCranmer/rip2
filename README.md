@@ -14,18 +14,12 @@
 
 Deleted files get sent to the graveyard 🪦 (typically `/tmp/graveyard-$USER`, see [notes](#notes) on changing this) under their absolute path, giving you a chance to recover them 🧟. No data is overwritten. If files that share the same path are deleted, they will be renamed as numbered backups.
 
-This version, "rip2", is a fork-of-a-fork:
+rip2 is a maintained fork of [nivekuil/rip](https://github.com/nivekuil/rip) with several improvements:
 
-1. [nivekuil/rip](https://github.com/nivekuil/rip), the original, which has been unmaintained since 2020.
-2. [StandingPadAnimation/rip](https://github.com/StandingPadAnimations/rip) who added a few features.
-3. Finally, that repo was forked [@here](https://github.com/MilesCranmer/rip2). Changes include:
-    - **Expanded support**: Windows, NixOS
-    - **Cleanup**: refactoring to modern rust, merging PRs from original repo
-    - **Testing**: add full test suite and coverage monitoring
-    - **Style**: colorful output, datetime info in seance
-    - **Bug fixes**: Fixed FIFO files, and an issue with seance
-    - **Shell completions**: bash, elvish, fish, powershell, zsh, and nushell (via clap)
-    - **Safety**: implemented flock to prevent races from concurrent processes
+- **Cross-platform support** (Linux, macOS, Windows)
+- **Modernised codebase** (refactored in modern Rust, merged upstream PRs)
+- **Improved safety** (file locking to prevent races, stricter permission handling, bug fixes)
+- **Better tooling** (shell completions via clap, full test suite with coverage, clearer timestamped output)
 
 ## ⚰️ Installation
 
