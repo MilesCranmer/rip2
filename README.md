@@ -52,7 +52,7 @@ This package is supported on Linux, macOS, and Windows.
 On macOS or Linux with Homebrew installed:
 
 ```bash
-$ brew install rip2
+brew install rip2
 ```
 
 ### Cargo
@@ -61,7 +61,7 @@ $ brew install rip2
 2. Then, install this package with cargo:
 
 ```bash
-$ cargo install --locked rip2
+cargo install --locked rip2
 ```
 
 ### Binaries
@@ -171,58 +171,58 @@ Sub-commands:
 Basic usage -- easier than rm
 
 ```bash
-$ rip dir1/ file1
+rip dir1/ file1
 ```
 
 Undo the last deletion
 
 ```bash
-$ rip -u
-Returned /tmp/graveyard-jack/home/jack/file1 to /home/jack/file1
+rip -u
+# Returned /tmp/graveyard-jack/home/jack/file1 to /home/jack/file1
 ```
 
 Print some info (size and first few lines in a file, total size and first few files in a directory) about the target and then prompt for deletion
 
 ```bash
-$ rip -i file1
-dir1: file, 1337 bytes including:
-> Position: Shooting Guard and Small Forward ▪ Shoots: Right
-> 6-6, 185lb (198cm, 83kg)
-Send file1 to the graveyard? (y/n) y
+rip -i file1
+# dir1: file, 1337 bytes including:
+# > Position: Shooting Guard and Small Forward ▪ Shoots: Right
+# > 6-6, 185lb (198cm, 83kg)
+# Send file1 to the graveyard? (y/n) y
 ```
 
 Print files that were deleted from under the current directory
 
 ```bash
-$ rip -s
-/tmp/graveyard-jack/home/jack/file1
-/tmp/graveyard-jack/home/jack/dir1
+rip -s
+# /tmp/graveyard-jack/home/jack/file1
+# /tmp/graveyard-jack/home/jack/dir1
 ```
 
 Name conflicts are resolved
 
 ```bash
-$ touch file1
-$ rip file1
-$ rip -s
-/tmp/graveyard-jack/home/jack/dir1
-/tmp/graveyard-jack/home/jack/file1
-/tmp/graveyard-jack/home/jack/file1~1
+touch file1
+rip file1
+rip -s
+# /tmp/graveyard-jack/home/jack/dir1
+# /tmp/graveyard-jack/home/jack/file1
+# /tmp/graveyard-jack/home/jack/file1~1
 ```
 
 -u also takes the path of a file in the graveyard
 
 ```bash
-$ rip -u /tmp/graveyard-jack/home/jack/file1
-Returned /tmp/graveyard-jack/home/jack/file1 to /home/jack/file1
+rip -u /tmp/graveyard-jack/home/jack/file1
+# Returned /tmp/graveyard-jack/home/jack/file1 to /home/jack/file1
 ```
 
 Combine -u and -s to restore everything printed by -s
 
 ```bash
-$ rip -su
-Returned /tmp/graveyard-jack/home/jack/dir1 to /home/jack/dir1
-Returned /tmp/graveyard-jack/home/jack/file1~1 to /home/jack/file1~1
+rip -su
+# Returned /tmp/graveyard-jack/home/jack/dir1 to /home/jack/dir1
+# Returned /tmp/graveyard-jack/home/jack/file1~1 to /home/jack/file1~1
 ```
 
 ## Notes
