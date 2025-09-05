@@ -21,6 +21,28 @@ rip2 is a maintained fork of [nivekuil/rip](https://github.com/nivekuil/rip) wit
 - **Improved safety** (file locking to prevent races, stricter permission handling, bug fixes)
 - **Better tooling** (shell completions via clap, full test suite with coverage, clearer timestamped output)
 
+## Quick start
+
+Install:
+
+```bash
+brew install rip2
+```
+
+Delete a file or directory:
+
+```bash
+rip file.txt
+```
+
+Undo the last deletion:
+
+```bash
+rip -u
+```
+
+More details below.
+
 ## ⚰️ Installation
 
 This package is supported on Linux, macOS, and Windows.
