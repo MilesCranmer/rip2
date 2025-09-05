@@ -29,10 +29,10 @@ Install:
 brew install rip2
 ```
 
-Delete a file or directory:
+Delete files and directories (no `-rf` needed):
 
 ```bash
-rip file.txt
+rip file.txt dir1 dir2
 ```
 
 Undo the last deletion:
