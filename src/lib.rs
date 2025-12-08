@@ -1,9 +1,14 @@
+use crate::syntax_highlight::{style_to_ansi, ANSI_THEME};
 use clap::CommandFactory;
 use fs_extra::dir::get_size;
 use std::fs::Metadata;
-use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
+use std::io::{Cursor, Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 use walkdir::WalkDir;
 
 /// Information needed to create a directory with specific permissions
@@ -29,6 +34,7 @@ use std::os::windows::fs::symlink_file as symlink;
 pub mod args;
 pub mod completions;
 pub mod record;
+pub mod syntax_highlight;
 pub mod util;
 
 use args::Args;
@@ -286,14 +292,36 @@ fn should_we_bury_this(
             &target.to_str().unwrap(),
             util::humanize_bytes(metadata.len())
         )?;
+
         // Read the file and print the first few lines
-        if let Ok(source_file) = fs::File::open(source) {
-            for line in BufReader::new(source_file)
-                .lines()
-                .take(LINES_TO_INSPECT)
-                .filter_map(Result::ok)
-            {
-                writeln!(stream, "> {line}")?;
+        if let Ok(contents) = fs::read_to_string(source) {
+            let ps = SyntaxSet::load_defaults_newlines();
+
+            // Load embedded ANSI theme from compile-time string
+            let mut cursor = Cursor::new(ANSI_THEME.as_bytes());
+            let theme = ThemeSet::load_from_reader(&mut cursor).expect("Failed to load ANSI theme");
+
+            let syntax = ps
+                .find_syntax_for_file(source)
+                .ok()
+                .flatten()
+                .unwrap_or(ps.find_syntax_plain_text());
+
+            let mut h = HighlightLines::new(syntax, &theme);
+
+            for line in LinesWithEndings::from(&contents).take(LINES_TO_INSPECT) {
+                let ranges = h.highlight_line(line, &ps);
+                match ranges {
+                    Ok(ranges) => {
+                        write!(stream, "> ")?;
+                        for (style, text) in ranges {
+                            write!(stream, "{}", style_to_ansi(style, text))?;
+                        }
+                    }
+                    Err(_) => {
+                        writeln!(stream, "> {}", line.trim_end())?;
+                    }
+                }
             }
         } else {
             writeln!(stream, "Error reading {}", source.display())?;
