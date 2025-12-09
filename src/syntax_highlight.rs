@@ -1,8 +1,6 @@
 use nu_ansi_term::Color;
 use syntect::highlighting::Style;
 
-pub const ANSI_THEME: &str = include_str!("./ansi.tmTheme");
-
 pub fn style_to_ansi(style: Style, text: &str) -> String {
     let mut ansi_style = nu_ansi_term::Style::new();
 

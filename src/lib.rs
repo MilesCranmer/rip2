@@ -1,13 +1,13 @@
-use crate::syntax_highlight::{style_to_ansi, ANSI_THEME};
 use clap::CommandFactory;
 use fs_extra::dir::get_size;
+use lazy_static::lazy_static;
 use std::fs::Metadata;
-use std::io::{Cursor, Error, ErrorKind, Write};
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 use syntect::easy::HighlightLines;
-use syntect::highlighting::ThemeSet;
-use syntect::parsing::SyntaxSet;
+use syntect::highlighting::Theme;
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 use walkdir::WalkDir;
 
@@ -40,9 +40,20 @@ pub mod util;
 use args::Args;
 use record::{Record, RecordItem, DEFAULT_FILE_LOCK};
 
+use crate::syntax_highlight::style_to_ansi;
+
 const LINES_TO_INSPECT: usize = 6;
 const FILES_TO_INSPECT: usize = 6;
 pub const BIG_FILE_THRESHOLD: u64 = 500_000_000; // 500 MB
+
+lazy_static! {
+    static ref SYNTAX: SyntaxSet = SyntaxSet::load_defaults_newlines();
+    static ref SYNTAX_PLAINTEXT: SyntaxReference = SYNTAX.find_syntax_plain_text().to_owned();
+    static ref HIGHLIGHT_THEME: Theme = {
+        let bytes = include_bytes!("../assets/ansi.theme.msgpack");
+        rmp_serde::from_slice(bytes).expect("comptime success")
+    };
+}
 
 pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) -> Result<(), Error> {
     args::validate_args(cli)?;
@@ -295,22 +306,16 @@ fn should_we_bury_this(
 
         // Read the file and print the first few lines
         if let Ok(contents) = fs::read_to_string(source) {
-            let ps = SyntaxSet::load_defaults_newlines();
-
-            // Load embedded ANSI theme from compile-time string
-            let mut cursor = Cursor::new(ANSI_THEME.as_bytes());
-            let theme = ThemeSet::load_from_reader(&mut cursor).expect("Failed to load ANSI theme");
-
-            let syntax = ps
+            let syntax = SYNTAX
                 .find_syntax_for_file(source)
                 .ok()
                 .flatten()
-                .unwrap_or(ps.find_syntax_plain_text());
+                .unwrap_or(&SYNTAX_PLAINTEXT);
 
-            let mut h = HighlightLines::new(syntax, &theme);
+            let mut h = HighlightLines::new(syntax, &HIGHLIGHT_THEME);
 
             for line in LinesWithEndings::from(&contents).take(LINES_TO_INSPECT) {
-                let ranges = h.highlight_line(line, &ps);
+                let ranges = h.highlight_line(line, &SYNTAX);
                 match ranges {
                     Ok(ranges) => {
                         write!(stream, "> ")?;
