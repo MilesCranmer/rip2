@@ -17,16 +17,20 @@ pub struct RecordItem {
 
 impl RecordItem {
     /// Parse a line in the record into a `RecordItem`
-    pub fn new(line: &str) -> Self {
+    pub fn new(line: &str) -> io::Result<Self> {
         let mut tokens = line.split('\t');
-        let time = tokens.next().expect("Bad format: column 1").to_string();
-        let orig = tokens.next().expect("Bad format: column 2").to_string();
-        let dest = tokens.next().expect("Bad format: column 3").to_string();
-        Self {
-            time,
+        let (Some(time), Some(orig), Some(dest)) = (tokens.next(), tokens.next(), tokens.next())
+        else {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Bad record format, expected 3 columns, got: {line:?}"),
+            ));
+        };
+        Ok(Self {
+            time: time.to_string(),
             orig: PathBuf::from(orig),
             dest: PathBuf::from(dest),
-        }
+        })
     }
 
     /// Parse the timestamp in this record, which could be in either RFC3339 format (from rip2)
@@ -91,7 +95,7 @@ pub const DEFAULT_FILE_LOCK: bool = false;
 impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
     const HEADER: &'static str = "Time\tOriginal\tDestination";
 
-    pub fn new(graveyard: &Path) -> Self {
+    pub fn new(graveyard: &Path) -> io::Result<Self> {
         let path = graveyard.join(RECORD);
         // Create the record file if it doesn't exist
         if !path.exists() {
@@ -101,21 +105,30 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
                 .create(true)
                 .write(true)
                 .open(&path)
-                .expect("Failed to open record file");
+                .map_err(|e| {
+                    Error::new(
+                        e.kind(),
+                        format!("Failed to open record file at {}: {e}", path.display()),
+                    )
+                })?;
             if FILE_LOCK {
-                record_file.lock_exclusive().unwrap();
+                record_file.lock_exclusive()?;
             }
-            writeln!(record_file, "{}", Self::HEADER)
-                .expect("Failed to write header to record file");
+            writeln!(record_file, "{}", Self::HEADER).map_err(|e| {
+                Error::new(
+                    e.kind(),
+                    format!("Failed to write header to record file: {e}"),
+                )
+            })?;
         }
-        Self { path }
+        Ok(Self { path })
     }
 
     pub fn open(&self) -> Result<fs::File, Error> {
         let file = fs::File::open(&self.path)
             .map_err(|_| Error::new(ErrorKind::NotFound, "Failed to read record!"))?;
         if FILE_LOCK {
-            file.lock_exclusive().unwrap();
+            file.lock_exclusive()?;
         }
         Ok(file)
     }
@@ -136,6 +149,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         // if there is items in the vector
         let mut graves_to_exhume: Vec<PathBuf> = Vec::new();
         for entry in contents.lines().rev().map(RecordItem::new) {
+            let entry = entry?;
             // Check that the file is still in the graveyard.
             // If it is, return the corresponding line.
             if util::symlink_exists(&entry.dest) {
@@ -163,7 +177,11 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         let lines_to_write: Vec<String> = reader
             .lines()
             .map_while(Result::ok)
-            .filter(|line| !graves.iter().any(|y| *y == RecordItem::new(line).dest))
+            .filter(|line| {
+                !graves
+                    .iter()
+                    .any(|y| RecordItem::new(line).is_ok_and(|item| *y == item.dest))
+            })
             .collect();
         let mut new_record_file = fs::OpenOptions::new()
             .create(true)
@@ -171,7 +189,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             .write(true)
             .open(&self.path)?;
         if FILE_LOCK {
-            new_record_file.lock_exclusive().unwrap();
+            new_record_file.lock_exclusive()?;
         }
         writeln!(new_record_file, "{}", Self::HEADER)?; // Write the header back
         for line in lines_to_write {
@@ -196,27 +214,36 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
     pub fn lines_of_graves<'a>(
         &'a self,
         graves: &'a [PathBuf],
-    ) -> impl Iterator<Item = String> + 'a {
-        let record_file = self.open().unwrap();
-        let reader = self.skip_header(BufReader::new(record_file)).unwrap();
-        reader
-            .lines()
-            .map_while(Result::ok)
-            .filter(move |line| graves.iter().any(|y| *y == RecordItem::new(line).dest))
+    ) -> io::Result<impl Iterator<Item = String> + 'a> {
+        let record_file = self.open()?;
+        let reader = self.skip_header(BufReader::new(record_file))?;
+        Ok(reader.lines().map_while(Result::ok).filter(move |line| {
+            graves
+                .iter()
+                .any(|y| RecordItem::new(line).is_ok_and(|item| *y == item.dest))
+        }))
     }
 
-    /// Returns an iterator over all graves in the record that are under gravepath
+    /// Returns an iterator over all graves in the record that are under gravepath.
+    ///
+    /// Malformed lines are yielded as `Err` items so the caller can report them
+    /// instead of panicking.
     pub fn seance<'a>(
         &'a self,
         gravepath: &'a PathBuf,
-    ) -> io::Result<impl Iterator<Item = RecordItem> + 'a> {
+    ) -> io::Result<impl Iterator<Item = io::Result<RecordItem>> + 'a> {
         let record_file = self.open()?;
         let reader = self.skip_header(BufReader::new(record_file))?;
         Ok(reader
             .lines()
             .map_while(Result::ok)
             .map(|line| RecordItem::new(&line))
-            .filter(move |record_item| record_item.dest.starts_with(gravepath)))
+            // Keep errors so they reach the caller instead of being skipped
+            .filter(move |item| {
+                item.as_ref()
+                    .map(|i| i.dest.starts_with(gravepath))
+                    .unwrap_or(true)
+            }))
     }
 
     /// Write deletion history to record
@@ -226,7 +253,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         let mut record_file = fs::OpenOptions::new().append(true).open(&self.path)?;
 
         if FILE_LOCK {
-            record_file.lock_exclusive().unwrap();
+            record_file.lock_exclusive()?;
         }
 
         writeln!(
@@ -239,7 +266,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         .map_err(|e| {
             Error::new(
                 e.kind(),
-                format!("Failed to write record at {}", &self.path.display()),
+                format!("Failed to write record at {}", self.path.display()),
             )
         })?;
 
@@ -257,7 +284,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
                 ErrorKind::InvalidData,
                 format!(
                     "Invalid record file header at {}:\n  Expected: '{}'\n  Got:      '{}'",
-                    &self.path.display(),
+                    self.path.display(),
                     Self::HEADER,
                     header.trim()
                 ),

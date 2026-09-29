@@ -49,10 +49,15 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         {
             fs::set_permissions(graveyard, fs::Permissions::from_mode(0o700))?;
         }
+    } else if !graveyard.is_dir() {
+        return Err(Error::new(
+            ErrorKind::NotADirectory,
+            format!("Graveyard path is not a directory: {}", graveyard.display()),
+        ));
     }
 
     // Stores the deleted files
-    let record = Record::<DEFAULT_FILE_LOCK>::new(graveyard);
+    let record = Record::<DEFAULT_FILE_LOCK>::new(graveyard)?;
     let cwd = &env::current_dir()?;
 
     // If the user wishes to restore everything
@@ -72,7 +77,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         if cli.seance && record.open().is_ok() {
             let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
             for grave in record.seance(&gravepath)? {
-                graves_to_exhume.push(grave.dest);
+                graves_to_exhume.push(grave?.dest);
             }
         }
 
@@ -86,8 +91,8 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         let allow_rename = util::allow_rename();
 
         // Go through the graveyard and exhume all the graves
-        for line in record.lines_of_graves(graves_to_exhume) {
-            let entry = RecordItem::new(&line);
+        for line in record.lines_of_graves(graves_to_exhume)? {
+            let entry = RecordItem::new(&line)?;
             let orig: PathBuf = if util::symlink_exists(&entry.orig) {
                 util::rename_grave(&entry.orig)
             } else {
@@ -126,6 +131,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
         writeln!(stream, "{: <19}\tpath", "deletion_time")?;
         for grave in record.seance(&gravepath)? {
+            let grave = grave?;
             let formatted_time = grave.format_time_for_display()?;
             writeln!(stream, "{}\t{}", formatted_time, grave.dest.display())?;
         }

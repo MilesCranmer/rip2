@@ -309,3 +309,19 @@ fn test_directory_size_output() {
     assert!(numeric_size >= 3.0);
     assert!(numeric_size < 6.0);
 }
+
+#[rstest]
+fn test_record_item_malformed() {
+    use rip2::record::RecordItem;
+
+    // Malformed record lines produce an error instead of panicking
+    assert!(RecordItem::new("badline-no-tabs").is_err());
+    assert!(RecordItem::new("only\ttwo").is_err());
+    assert!(RecordItem::new("").is_err());
+
+    // Well-formed lines still parse (extra columns are ignored, as before)
+    let ok = RecordItem::new("time\torig\tdest").unwrap();
+    assert_eq!(ok.time, "time");
+    assert_eq!(ok.orig, PathBuf::from("orig"));
+    assert_eq!(ok.dest, PathBuf::from("dest"));
+}

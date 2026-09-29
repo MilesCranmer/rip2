@@ -657,7 +657,8 @@ fn test_issue_18() {
         assert!(!record_contents.contains("gnu_meta.zip"));
 
         // And give this for the last bury
-        let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard);
+        let record =
+            record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard).unwrap();
         let last_bury = record.get_last_bury().unwrap();
         assert!(last_bury.ends_with("uu_meta.zip"));
     }
@@ -808,7 +809,7 @@ fn read_empty_record() {
     let test_env = TestEnv::new();
     let cwd = env::current_dir().unwrap();
     fs::create_dir(&test_env.graveyard).unwrap();
-    let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard);
+    let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard).unwrap();
     let gravepath = &util::join_absolute(&test_env.graveyard, dunce::canonicalize(cwd).unwrap());
     let result = record.seance(gravepath);
     assert!(result.is_ok());
@@ -1115,7 +1116,7 @@ fn _test_concurrent_writes<const FILE_LOCK: bool>() {
     let _env_lock = aquire_lock();
     let test_env = TestEnv::new();
     fs::create_dir(&test_env.graveyard).unwrap();
-    let record = record::Record::<FILE_LOCK>::new(&test_env.graveyard);
+    let record = record::Record::<FILE_LOCK>::new(&test_env.graveyard).unwrap();
     let record_path = test_env.graveyard.join(record::RECORD);
 
     // Create two threads that will write to the record simultaneously
@@ -1959,4 +1960,57 @@ fn test_issue_129_readonly_parent_dir_breaks_first_bury() {
 
     let mode = fs::metadata(&grave_ro_parent).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o555, "mirrored dir should retain 0555 perms");
+}
+
+#[rstest]
+fn test_malformed_record_line() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+    fs::write(
+        test_env.graveyard.join(".record"),
+        "Time\tOriginal\tDestination\nbadline-no-tabs\n",
+    )
+    .unwrap();
+
+    // A malformed line in `.record` must produce a clean error, not a panic.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("malformed record line should produce an error");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("Bad record format"),
+        "Unexpected error message: {err}"
+    );
+}
+
+#[rstest]
+fn test_graveyard_is_a_file() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    let graveyard_file = test_env.src.join("regular-file");
+    fs::write(&graveyard_file, "x").unwrap();
+
+    // Pointing --graveyard at a regular file must produce a clean error,
+    // not a panic while creating `.record`.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            targets: vec![test_env.src.join("victim")],
+            graveyard: Some(graveyard_file),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("graveyard as a file should produce an error");
+    assert_eq!(err.kind(), ErrorKind::NotADirectory);
 }
