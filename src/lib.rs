@@ -2,7 +2,7 @@ use clap::CommandFactory;
 use fs_extra::dir::get_size;
 use std::fs::Metadata;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::{env, fs};
 use walkdir::WalkDir;
 
@@ -175,7 +175,7 @@ fn bury_target<const FILE_LOCK: bool>(
             ErrorKind::NotFound,
             format!(
                 "Cannot remove {}: no such file or directory",
-                target.to_str().unwrap()
+                target.display()
             ),
         )
     })?;
@@ -238,7 +238,7 @@ fn bury_target<const FILE_LOCK: bool>(
         )
         .map_err(|e| {
             fs::remove_dir_all(dest).ok();
-            Error::new(e.kind(), "Failed to bury file")
+            Error::new(e.kind(), format!("Failed to bury file: {e}"))
         })?;
 
         if moved {
@@ -269,7 +269,7 @@ fn should_we_bury_this(
             writeln!(
                 stream,
                 "{}: directory, {} including:",
-                target.to_str().unwrap(),
+                target.display(),
                 util::humanize_bytes(num_bytes)
             )?;
         }
@@ -289,7 +289,7 @@ fn should_we_bury_this(
         writeln!(
             stream,
             "{}: file, {}",
-            &target.to_str().unwrap(),
+            target.display(),
             util::humanize_bytes(metadata.len())
         )?;
         // Read the file and print the first few lines
@@ -306,7 +306,7 @@ fn should_we_bury_this(
         }
     }
     util::prompt_yes(
-        format!("Send {} to the graveyard?", target.to_str().unwrap()),
+        format!("Send {} to the graveyard?", target.display()),
         mode,
         stream,
     )
@@ -324,8 +324,21 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
-            // Only add directories to the list (skip the final file component)
-            if cumulative_source.is_dir() {
+            // Queue directories that must exist in the graveyard before the
+            // copy (skip the final file component). Three cases:
+            //   - Windows path prefixes (e.g. `C:\` or verbatim `\\?\D:`) always
+            //     get their own directory in the graveyard, even though a bare
+            //     prefix like `\\?\D:` does not report `is_dir`.
+            //   - Ordinary directories in the source path are queued.
+            //   - Links must NOT be pre-created as real directories, even though
+            //     `is_dir` follows them and may report true (e.g. a junction or
+            //     a symlink to a directory): creating the destination as a real
+            //     dir would prevent the link itself from being created there.
+            let is_link = fs::symlink_metadata(&cumulative_source)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            if matches!(component, Component::Prefix(_)) || (cumulative_source.is_dir() && !is_link)
+            {
                 let permissions = fs::metadata(&cumulative_source)
                     .map(|m| m.permissions())
                     .ok();
@@ -352,11 +365,16 @@ fn build_dirs_to_create_from_graveyard(
     let mut orig_current = orig_path.parent();
 
     while let (Some(g), Some(o)) = (graveyard_current, orig_current) {
-        let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
-        dirs_to_create.push(DirToCreate {
-            path: o.to_path_buf(),
-            permissions,
-        });
+        // Only paths containing at least one real directory component need
+        // creating; pseudo-ancestors such as the `\\?\` prefix of a Windows
+        // verbatim path are skipped (they cannot be passed to `create_dir`).
+        if o.components().any(|c| matches!(c, Component::Normal(_))) {
+            let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
+            dirs_to_create.push(DirToCreate {
+                path: o.to_path_buf(),
+                permissions,
+            });
+        }
 
         // Move up one level
         graveyard_current = g.parent();
@@ -427,7 +445,8 @@ pub fn move_target(
     // If that didn't work, then we need to copy and rm.
     let created_dirs = create_dirs_for_copy(dirs_to_create)?;
 
-    if fs::symlink_metadata(target)?.is_dir() {
+    let target_metadata = fs::symlink_metadata(target)?;
+    if target_metadata.is_dir() {
         let moved = move_dir(target, dest, mode, stream, force)?;
         apply_dir_permissions(&created_dirs)?;
         Ok(moved)
@@ -442,7 +461,7 @@ pub fn move_target(
                 ),
             )
         })?;
-        fs::remove_file(target).map_err(|e| {
+        remove_file_or_link(target, &target_metadata).map_err(|e| {
             Error::new(
                 e.kind(),
                 format!("Failed to remove file: {}", target.display()),
@@ -451,6 +470,26 @@ pub fn move_target(
         apply_dir_permissions(&created_dirs)?;
         Ok(moved)
     }
+}
+
+/// Remove `target` after its contents were copied to the graveyard.
+///
+/// On Windows, directory reparse points such as junctions and directory
+/// symlinks are links, not files: `remove_file` fails on them, so they must be
+/// deleted with `remove_dir` (which removes the link itself, not its target).
+fn remove_file_or_link(target: &Path, metadata: &fs::Metadata) -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+        if metadata.file_type().is_symlink()
+            && metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0
+        {
+            return fs::remove_dir(target);
+        }
+    }
+    let _ = metadata;
+    fs::remove_file(target)
 }
 
 /// Move a target which is a directory to a given destination, copying if necessary.
@@ -570,7 +609,7 @@ pub fn copy_file(
 
     if filetype.is_symlink() {
         let target = fs::read_link(source)?;
-        symlink(target, dest)?;
+        create_link(&target, dest, &metadata)?;
         return Ok(true);
     }
 
@@ -595,6 +634,28 @@ pub fn copy_file(
         }
         Ok(_) => Ok(true),
     }
+}
+
+/// Create a link at `dest` pointing to `target`.
+///
+/// On Windows, links to directories --- junctions as well as directory
+/// symlinks --- must be created with `symlink_dir`: a file-type symlink that
+/// points to a directory is invalid and cannot be traversed like a directory.
+/// Both kinds of directory link carry the directory file attribute, which is
+/// used to distinguish them from file links.
+fn create_link(target: &Path, dest: &Path, metadata: &fs::Metadata) -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            // `dunce::simplified` strips the `\\?\` verbatim prefix that
+            // `read_link` reports for junction targets.
+            return std::os::windows::fs::symlink_dir(dunce::simplified(target), dest);
+        }
+    }
+    let _ = metadata;
+    symlink(target, dest)
 }
 
 pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
