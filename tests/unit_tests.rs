@@ -309,3 +309,141 @@ fn test_directory_size_output() {
     assert!(numeric_size >= 3.0);
     assert!(numeric_size < 6.0);
 }
+
+#[rstest]
+fn test_record_item_malformed() {
+    use rip2::record::RecordItem;
+
+    // Malformed record lines produce an error instead of panicking
+    assert!(RecordItem::new("badline-no-tabs").is_err());
+    assert!(RecordItem::new("only\ttwo").is_err());
+    assert!(RecordItem::new("").is_err());
+
+    // Well-formed lines still parse (extra columns are ignored, as before)
+    let ok = RecordItem::new("time\torig\tdest").unwrap();
+    assert_eq!(ok.time, "time");
+    assert_eq!(ok.orig, PathBuf::from("orig"));
+    assert_eq!(ok.dest, PathBuf::from("dest"));
+}
+
+/// On Windows, junctions and directory symlinks must be recreated as
+/// directory-type links: a file-type symlink to a directory is invalid.
+#[cfg(target_os = "windows")]
+#[rstest]
+fn test_junction_copy_is_dir_link() {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+
+    let tmpdir = tempdir().unwrap();
+    let path = PathBuf::from(tmpdir.path());
+    let target_path = path.join("junc_target");
+    fs::create_dir(&target_path).unwrap();
+    fs::write(target_path.join("inner.txt"), "data").unwrap();
+    let source_path = path.join("junc");
+
+    // Junctions (unlike symlinks) can be created without elevation
+    let status = process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&source_path)
+        .arg(&target_path)
+        .status()
+        .expect("failed to run mklink");
+    assert!(status.success(), "mklink /J failed");
+
+    let dest_path = path.join("junc_copy");
+    let mut log = Vec::new();
+    rip2::copy_file(&source_path, &dest_path, &TestMode, &mut log, false).unwrap();
+
+    // The copy must be a link *to a directory*, i.e. carry the directory file
+    // attribute — not a file-type symlink.
+    let meta = fs::symlink_metadata(&dest_path).unwrap();
+    assert!(meta.file_type().is_symlink());
+    assert!(
+        meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0,
+        "junction was recreated as a file-type link"
+    );
+    // And it must resolve to the original target
+    assert!(dest_path.join("inner.txt").exists());
+}
+
+/// Burying a junction through the copy path must succeed: the destination is
+/// a directory-type link and the original junction is removed (`remove_file`
+/// fails on junctions).
+#[cfg(target_os = "windows")]
+#[rstest]
+fn test_junction_move_target() {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+
+    let tmpdir = tempdir().unwrap();
+    let path = PathBuf::from(tmpdir.path());
+    let target_path = path.join("junc_target");
+    fs::create_dir(&target_path).unwrap();
+    let source_path = path.join("junc");
+
+    let status = process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&source_path)
+        .arg(&target_path)
+        .status()
+        .expect("failed to run mklink");
+    assert!(status.success(), "mklink /J failed");
+
+    // allow_rename=false forces the copy path
+    let dest_path = path.join("graveyard").join("junc");
+    fs::create_dir_all(dest_path.parent().unwrap()).unwrap();
+    let mut log = Vec::new();
+    rip2::move_target(
+        &source_path,
+        &dest_path,
+        false,
+        &TestMode,
+        &mut log,
+        false,
+        &[],
+    )
+    .expect("failed to move junction");
+
+    // Source junction was removed (requires remove_dir, not remove_file)
+    assert!(fs::symlink_metadata(&source_path).is_err());
+    // And recreated as a directory-type link
+    let meta = fs::symlink_metadata(&dest_path).unwrap();
+    assert!(meta.file_type().is_symlink());
+    assert!(meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0);
+}
+
+/// Ancestor path components that are themselves links must still be queued
+/// for mirroring as real directories in the graveyard. Only the final
+/// component — the target being buried — may be skipped, because it is moved
+/// rather than recreated. Regression test: skipping *every* link component
+/// left `graveyard/.../alias` uncreated, so burying `alias/link` hit ENOENT.
+#[cfg(unix)]
+#[rstest]
+fn test_graveyard_dest_queues_symlinked_ancestors() {
+    let tmpdir = tempdir().unwrap();
+    let root = tmpdir.path();
+
+    let real_dir = root.join("real_dir");
+    fs::create_dir(&real_dir).unwrap();
+    let dir_target = root.join("dir_target");
+    fs::create_dir(&dir_target).unwrap();
+    // `alias` is a symlink to a real directory; `link` (the target being
+    // buried) is itself a symlink to a directory.
+    let alias = root.join("alias");
+    symlink(&real_dir, &alias).unwrap();
+    symlink(&dir_target, real_dir.join("link")).unwrap();
+    let source = alias.join("link");
+
+    let graveyard = root.join("graveyard");
+    let (_dest, dirs_to_create) = rip2::testing::testable_build_graveyard_dest(&graveyard, &source);
+
+    // The symlinked ancestor `alias` is queued as a real directory …
+    let mirrored_alias = rip2::util::join_absolute(&graveyard, &alias);
+    assert!(
+        dirs_to_create.iter().any(|d| d.path == mirrored_alias),
+        "symlinked ancestor was not queued for mirroring: {dirs_to_create:?}"
+    );
+    // … but the final component — itself a link — is not: it gets moved.
+    let final_dest = rip2::util::join_absolute(&graveyard, &source);
+    assert!(dirs_to_create.iter().all(|d| d.path != final_dest));
+}
