@@ -83,8 +83,17 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
 
         // Otherwise, add the last deleted file
         if graves_to_exhume.is_empty() {
-            if let Ok(s) = record.get_last_bury() {
-                graves_to_exhume.push(s);
+            match record.get_last_bury() {
+                Ok(s) => graves_to_exhume.push(s),
+                // An empty record is not an error, but a corrupt one must
+                // surface instead of silently restoring nothing.
+                Err(e) if e.kind() == ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(Error::new(
+                        e.kind(),
+                        format!("Failed to look up the last buried file: {e}"),
+                    ))
+                }
             }
         }
 
@@ -92,6 +101,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
 
         // Go through the graveyard and exhume all the graves
         for line in record.lines_of_graves(graves_to_exhume)? {
+            let line = line?;
             let entry = RecordItem::new(&line)?;
             let orig: PathBuf = if util::symlink_exists(&entry.orig) {
                 util::rename_grave(&entry.orig)
@@ -318,26 +328,35 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
     let mut dirs_to_create = Vec::new();
     let mut cumulative_source = PathBuf::new();
 
-    for component in source.components() {
+    let mut components = source.components().peekable();
+    while let Some(component) = components.next() {
         // Build cumulative source path
         cumulative_source.push(component.as_os_str());
+        let is_final_component = components.peek().is_none();
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
             // Queue directories that must exist in the graveyard before the
-            // copy (skip the final file component). Three cases:
+            // copy. Three cases:
             //   - Windows path prefixes (e.g. `C:\` or verbatim `\\?\D:`) always
             //     get their own directory in the graveyard, even though a bare
             //     prefix like `\\?\D:` does not report `is_dir`.
-            //   - Ordinary directories in the source path are queued.
-            //   - Links must NOT be pre-created as real directories, even though
-            //     `is_dir` follows them and may report true (e.g. a junction or
-            //     a symlink to a directory): creating the destination as a real
-            //     dir would prevent the link itself from being created there.
+            //   - Directories in the source path are queued, including ancestor
+            //     components that are themselves links (e.g. `alias` in
+            //     `alias/file` where `alias` is a symlink to a directory):
+            //     ancestors are always mirrored as real directories because
+            //     only the final component is moved, not recreated.
+            //   - The final component is the target being buried: if it is a
+            //     link it must NOT be pre-created as a real directory, even
+            //     though `is_dir` follows it and may report true (e.g. a
+            //     junction or a symlink to a directory): creating the
+            //     destination as a real dir would prevent the link itself from
+            //     being created there.
             let is_link = fs::symlink_metadata(&cumulative_source)
                 .map(|m| m.file_type().is_symlink())
                 .unwrap_or(false);
-            if matches!(component, Component::Prefix(_)) || (cumulative_source.is_dir() && !is_link)
+            if matches!(component, Component::Prefix(_))
+                || (cumulative_source.is_dir() && !(is_final_component && is_link))
             {
                 let permissions = fs::metadata(&cumulative_source)
                     .map(|m| m.permissions())
@@ -678,7 +697,10 @@ pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
 /// Testing module for exposing internal functions to unit tests.
 /// This module is only used for testing purposes and should not be used in production code.
 pub mod testing {
-    use super::{should_we_bury_this, util, Error, Metadata, Path, PathBuf, Write};
+    use super::{
+        build_graveyard_dest, should_we_bury_this, util, DirToCreate, Error, Metadata, Path,
+        PathBuf, Write,
+    };
 
     pub fn testable_should_we_bury_this(
         target: &Path,
@@ -687,5 +709,14 @@ pub mod testing {
         stream: &mut impl Write,
     ) -> Result<bool, Error> {
         should_we_bury_this(target, source, metadata, &util::TestMode, stream)
+    }
+
+    /// Expose `build_graveyard_dest` so tests can check which directories are
+    /// queued for mirroring in the graveyard.
+    pub fn testable_build_graveyard_dest(
+        graveyard: &Path,
+        source: &Path,
+    ) -> (PathBuf, Vec<DirToCreate>) {
+        build_graveyard_dest(graveyard, source)
     }
 }

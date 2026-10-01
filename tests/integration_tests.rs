@@ -18,6 +18,8 @@ use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
 
 #[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 lazy_static! {
@@ -2013,4 +2015,144 @@ fn test_graveyard_is_a_file() {
     );
     let err = result.expect_err("graveyard as a file should produce an error");
     assert_eq!(err.kind(), ErrorKind::NotADirectory);
+}
+
+/// Burying `alias/link` where `alias` is a symlink to a directory must mirror
+/// `alias` as a *real* directory in the graveyard: only the final component
+/// being buried skips mirroring. Regression test for a bug where every
+/// symlinked path component was skipped, leaving the mirrored `alias` dir
+/// uncreated and the bury failing with ENOENT.
+#[cfg(unix)]
+#[rstest]
+fn test_bury_link_under_symlinked_dir() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // `real_dir` is a real directory; `alias` is a symlink to it. The target
+    // being buried (`link`) is itself a symlink, which keeps the bury code
+    // from canonicalizing `alias` away.
+    let real_dir = test_env.src.join("real_dir");
+    fs::create_dir(&real_dir).unwrap();
+    let file_target = test_env.src.join("target.txt");
+    fs::write(&file_target, "data").unwrap();
+    let alias = test_env.src.join("alias");
+    symlink(&real_dir, &alias).unwrap();
+    let link = real_dir.join("link");
+    symlink(&file_target, &link).unwrap();
+
+    // Bury the file through the symlinked directory
+    let target = alias.join("link");
+    let expected_grave = util::join_absolute(&test_env.graveyard, &target);
+    let mut log = Vec::new();
+    rip2::run(
+        &Args {
+            targets: [target].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .expect("burying a file under a symlinked dir should succeed");
+
+    // The link is gone from the source, but the `alias` symlink itself is
+    // untouched.
+    assert!(fs::symlink_metadata(&link).is_err());
+    assert!(fs::symlink_metadata(&alias)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+
+    // The graveyard mirrors `alias` as a real directory and the buried file
+    // lands beneath it as a link.
+    let grave_alias_meta = fs::symlink_metadata(expected_grave.parent().unwrap()).unwrap();
+    assert!(grave_alias_meta.is_dir());
+    assert!(
+        !grave_alias_meta.file_type().is_symlink(),
+        "mirrored `alias` dir must be a real directory"
+    );
+    assert!(fs::symlink_metadata(&expected_grave)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+/// A malformed line in `.record` must propagate to the caller on unbury —
+/// `rip -u` on a corrupt record cannot silently restore nothing and exit 0.
+#[rstest]
+fn test_unbury_malformed_record_errors() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    let test_data = TestData::new(&test_env, None);
+
+    // Bury a file so the graveyard holds one valid grave
+    let mut log = Vec::new();
+    rip2::run(
+        &Args {
+            targets: [test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+    // The source file has been moved away by the bury, so compute the grave
+    // path from the still-existing source directory.
+    let grave = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&test_env.src)
+            .unwrap()
+            .join("test_file.txt"),
+    );
+
+    // Corrupt the record with a malformed line
+    let record_path = test_env.graveyard.join(record::RECORD);
+    let mut record_contents = fs::read_to_string(&record_path).unwrap();
+    record_contents.push_str("badline-no-tabs\n");
+    fs::write(&record_path, record_contents).unwrap();
+
+    // `rip -u` (restore the last bury) must error out
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            unbury: Some(Vec::new()),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("rip -u on a corrupt record should fail");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // `rip -u <grave>` (explicit selection) must error out too
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            unbury: Some(vec![grave]),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("rip -u <grave> on a corrupt record should fail");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // The same failure is visible at the CLI level as a nonzero exit
+    let output = cli_runner(
+        [
+            "--graveyard",
+            test_env.graveyard.to_str().unwrap(),
+            "--unbury",
+        ],
+        Some(&test_env.src),
+    )
+    .output()
+    .unwrap();
+    assert!(
+        !output.status.success(),
+        "rip -u on a corrupt record should exit nonzero"
+    );
 }

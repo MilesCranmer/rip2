@@ -411,3 +411,39 @@ fn test_junction_move_target() {
     assert!(meta.file_type().is_symlink());
     assert!(meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0);
 }
+
+/// Ancestor path components that are themselves links must still be queued
+/// for mirroring as real directories in the graveyard. Only the final
+/// component — the target being buried — may be skipped, because it is moved
+/// rather than recreated. Regression test: skipping *every* link component
+/// left `graveyard/.../alias` uncreated, so burying `alias/link` hit ENOENT.
+#[cfg(unix)]
+#[rstest]
+fn test_graveyard_dest_queues_symlinked_ancestors() {
+    let tmpdir = tempdir().unwrap();
+    let root = tmpdir.path();
+
+    let real_dir = root.join("real_dir");
+    fs::create_dir(&real_dir).unwrap();
+    let dir_target = root.join("dir_target");
+    fs::create_dir(&dir_target).unwrap();
+    // `alias` is a symlink to a real directory; `link` (the target being
+    // buried) is itself a symlink to a directory.
+    let alias = root.join("alias");
+    symlink(&real_dir, &alias).unwrap();
+    symlink(&dir_target, real_dir.join("link")).unwrap();
+    let source = alias.join("link");
+
+    let graveyard = root.join("graveyard");
+    let (_dest, dirs_to_create) = rip2::testing::testable_build_graveyard_dest(&graveyard, &source);
+
+    // The symlinked ancestor `alias` is queued as a real directory …
+    let mirrored_alias = rip2::util::join_absolute(&graveyard, &alias);
+    assert!(
+        dirs_to_create.iter().any(|d| d.path == mirrored_alias),
+        "symlinked ancestor was not queued for mirroring: {dirs_to_create:?}"
+    );
+    // … but the final component — itself a link — is not: it gets moved.
+    let final_dest = rip2::util::join_absolute(&graveyard, &source);
+    assert!(dirs_to_create.iter().all(|d| d.path != final_dest));
+}

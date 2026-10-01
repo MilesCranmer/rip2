@@ -210,18 +210,24 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             })
     }
 
-    /// Takes a vector of grave paths and returns the respective lines in the record
+    /// Takes a vector of grave paths and returns the respective lines in the record.
+    ///
+    /// Malformed lines are yielded as `Err` items so that a corrupt record
+    /// surfaces an error instead of silently restoring nothing.
     pub fn lines_of_graves<'a>(
         &'a self,
         graves: &'a [PathBuf],
-    ) -> io::Result<impl Iterator<Item = String> + 'a> {
+    ) -> io::Result<impl Iterator<Item = io::Result<String>> + 'a> {
         let record_file = self.open()?;
         let reader = self.skip_header(BufReader::new(record_file))?;
-        Ok(reader.lines().map_while(Result::ok).filter(move |line| {
-            graves
-                .iter()
-                .any(|y| RecordItem::new(line).is_ok_and(|item| *y == item.dest))
-        }))
+        Ok(reader
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(move |line| match RecordItem::new(&line) {
+                Ok(item) if graves.contains(&item.dest) => Some(Ok(line)),
+                Ok(_) => None,
+                Err(e) => Some(Err(e)),
+            }))
     }
 
     /// Returns an iterator over all graves in the record that are under gravepath.
