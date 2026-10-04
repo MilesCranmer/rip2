@@ -612,10 +612,10 @@ pub fn copy_file(
 
     if filetype.is_symlink() {
         let target = fs::read_link(source)?;
-        // A file-type symlink to a directory cannot be traversed, and `read_link`
-        // returns junction targets with a `\\?\` prefix.
         #[cfg(target_os = "windows")]
         if is_dir_link(&metadata) {
+            // A file-type symlink to a directory cannot be traversed, and `read_link`
+            // returns junction targets with a `\\?\` prefix.
             std::os::windows::fs::symlink_dir(dunce::simplified(&target), dest)?;
             return Ok(true);
         }
