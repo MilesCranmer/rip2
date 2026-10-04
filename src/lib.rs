@@ -371,9 +371,7 @@ fn build_dirs_to_create_from_graveyard(
     let mut orig_current = orig_path.parent();
 
     while let (Some(g), Some(o)) = (graveyard_current, orig_current) {
-        // Only paths containing at least one real directory component need
-        // creating; pseudo-ancestors such as the `\\?\` prefix of a Windows
-        // verbatim path are skipped (they cannot be passed to `create_dir`).
+        // Skip pseudo-ancestors like the Windows `\\?\` prefix, which `create_dir` rejects.
         if o.components().any(|c| matches!(c, Component::Normal(_))) {
             let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
             dirs_to_create.push(DirToCreate {
