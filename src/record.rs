@@ -210,40 +210,29 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             })
     }
 
-    /// Takes a vector of grave paths and returns the respective lines in the record
-    pub fn lines_of_graves<'a>(
-        &'a self,
-        graves: &'a [PathBuf],
-    ) -> io::Result<impl Iterator<Item = io::Result<String>> + 'a> {
+    /// Parses every grave in the record
+    fn entries(&self) -> io::Result<Vec<RecordItem>> {
         let record_file = self.open()?;
         let reader = self.skip_header(BufReader::new(record_file))?;
-        Ok(reader
-            .lines()
-            .map_while(Result::ok)
-            .filter_map(move |line| match RecordItem::new(&line) {
-                Ok(item) if graves.contains(&item.dest) => Some(Ok(line)),
-                Ok(_) => None,
-                Err(e) => Some(Err(e)),
-            }))
-    }
-
-    /// Returns an iterator over all graves in the record that are under gravepath
-    pub fn seance<'a>(
-        &'a self,
-        gravepath: &'a PathBuf,
-    ) -> io::Result<impl Iterator<Item = io::Result<RecordItem>> + 'a> {
-        let record_file = self.open()?;
-        let reader = self.skip_header(BufReader::new(record_file))?;
-        Ok(reader
+        reader
             .lines()
             .map_while(Result::ok)
             .map(|line| RecordItem::new(&line))
-            // Keep malformed lines so the caller sees the error
-            .filter(move |item| {
-                item.as_ref()
-                    .map(|i| i.dest.starts_with(gravepath))
-                    .unwrap_or(true)
-            }))
+            .collect()
+    }
+
+    /// Takes a vector of grave paths and returns the respective entries in the record
+    pub fn entries_of_graves(&self, graves: &[PathBuf]) -> io::Result<Vec<RecordItem>> {
+        let mut entries = self.entries()?;
+        entries.retain(|entry| graves.contains(&entry.dest));
+        Ok(entries)
+    }
+
+    /// Returns all graves in the record that are under gravepath
+    pub fn seance(&self, gravepath: &Path) -> io::Result<Vec<RecordItem>> {
+        let mut entries = self.entries()?;
+        entries.retain(|entry| entry.dest.starts_with(gravepath));
+        Ok(entries)
     }
 
     /// Write deletion history to record
