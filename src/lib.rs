@@ -85,8 +85,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         if graves_to_exhume.is_empty() {
             match record.get_last_bury() {
                 Ok(s) => graves_to_exhume.push(s),
-                // An empty record is not an error, but a corrupt one must
-                // surface instead of silently restoring nothing.
+                // NotFound means the record is empty, so there is nothing to restore.
                 Err(e) if e.kind() == ErrorKind::NotFound => {}
                 Err(e) => {
                     return Err(Error::new(

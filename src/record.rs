@@ -210,10 +210,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             })
     }
 
-    /// Takes a vector of grave paths and returns the respective lines in the record.
-    ///
-    /// Malformed lines are yielded as `Err` items so that a corrupt record
-    /// surfaces an error instead of silently restoring nothing.
+    /// Takes a vector of grave paths and returns the respective lines in the record
     pub fn lines_of_graves<'a>(
         &'a self,
         graves: &'a [PathBuf],
@@ -230,10 +227,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             }))
     }
 
-    /// Returns an iterator over all graves in the record that are under gravepath.
-    ///
-    /// Malformed lines are yielded as `Err` items so the caller can report them
-    /// instead of panicking.
+    /// Returns an iterator over all graves in the record that are under gravepath
     pub fn seance<'a>(
         &'a self,
         gravepath: &'a PathBuf,
@@ -244,7 +238,7 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
             .lines()
             .map_while(Result::ok)
             .map(|line| RecordItem::new(&line))
-            // Keep errors so they reach the caller instead of being skipped
+            // Keep malformed lines so the caller sees the error
             .filter(move |item| {
                 item.as_ref()
                     .map(|i| i.dest.starts_with(gravepath))
