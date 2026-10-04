@@ -21,10 +21,10 @@ use nix::sys::stat::Mode;
 #[cfg(unix)]
 use nix::unistd::mkfifo;
 #[cfg(unix)]
-use std::os::unix::fs::{symlink, FileTypeExt, PermissionsExt};
+use std::os::unix::fs::{symlink, symlink as symlink_dir, FileTypeExt, PermissionsExt};
 
 #[cfg(target_os = "windows")]
-use std::os::windows::fs::symlink_file as symlink;
+use std::os::windows::fs::{symlink_dir, symlink_file as symlink};
 
 pub mod args;
 pub mod completions;
@@ -608,14 +608,13 @@ pub fn copy_file(
 
     if filetype.is_symlink() {
         let target = fs::read_link(source)?;
-        #[cfg(target_os = "windows")]
         if is_dir_link(&metadata) {
             // A file-type symlink to a directory cannot be traversed, and `read_link`
             // returns junction targets with a `\\?\` prefix.
-            std::os::windows::fs::symlink_dir(dunce::simplified(&target), dest)?;
-            return Ok(true);
+            symlink_dir(dunce::simplified(&target), dest)?;
+        } else {
+            symlink(target, dest)?;
         }
-        symlink(target, dest)?;
         return Ok(true);
     }
 
