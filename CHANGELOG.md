@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/MilesCranmer/rip2/compare/v0.9.6...v0.9.7) (2026-10-04)
+
+
+### Bug Fixes
+
+* Windows directory links and graveyard panics ([#138](https://github.com/MilesCranmer/rip2/issues/138)) ([5b03f42](https://github.com/MilesCranmer/rip2/commit/5b03f42b4ff0878e968455d50b6d46dbfe82bc92))
+
 ## [0.9.6](https://github.com/MilesCranmer/rip2/compare/v0.9.5...v0.9.6) (2025-12-22)
 
 
