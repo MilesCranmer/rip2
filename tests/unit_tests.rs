@@ -309,3 +309,104 @@ fn test_directory_size_output() {
     assert!(numeric_size >= 3.0);
     assert!(numeric_size < 6.0);
 }
+
+#[rstest]
+fn test_record_item_malformed() {
+    use rip2::record::RecordItem;
+
+    // Malformed record lines produce an error instead of panicking
+    assert!(RecordItem::new("badline-no-tabs").is_err());
+    assert!(RecordItem::new("only\ttwo").is_err());
+    assert!(RecordItem::new("").is_err());
+
+    // Well-formed lines still parse (extra columns are ignored, as before)
+    let ok = RecordItem::new("time\torig\tdest").unwrap();
+    assert_eq!(ok.time, "time");
+    assert_eq!(ok.orig, PathBuf::from("orig"));
+    assert_eq!(ok.dest, PathBuf::from("dest"));
+}
+
+/// On Windows, junctions and directory symlinks must be recreated as
+/// directory-type links: a file-type symlink to a directory is invalid.
+#[cfg(target_os = "windows")]
+#[rstest]
+fn test_junction_copy_is_dir_link() {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+
+    let tmpdir = tempdir().unwrap();
+    let path = PathBuf::from(tmpdir.path());
+    let target_path = path.join("junc_target");
+    fs::create_dir(&target_path).unwrap();
+    fs::write(target_path.join("inner.txt"), "data").unwrap();
+    let source_path = path.join("junc");
+
+    // Junctions (unlike symlinks) can be created without elevation
+    let status = process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&source_path)
+        .arg(&target_path)
+        .status()
+        .expect("failed to run mklink");
+    assert!(status.success(), "mklink /J failed");
+
+    let dest_path = path.join("junc_copy");
+    let mut log = Vec::new();
+    rip2::copy_file(&source_path, &dest_path, &TestMode, &mut log, false).unwrap();
+
+    // The copy must carry the directory attribute, not be a file-type symlink.
+    let meta = fs::symlink_metadata(&dest_path).unwrap();
+    assert!(meta.file_type().is_symlink());
+    assert!(
+        meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0,
+        "junction was recreated as a file-type link"
+    );
+    // And it must resolve to the original target
+    assert!(dest_path.join("inner.txt").exists());
+}
+
+/// Burying a junction through the copy path must succeed: the destination is
+/// a directory-type link and the original junction is removed (`remove_file`
+/// fails on junctions).
+#[cfg(target_os = "windows")]
+#[rstest]
+fn test_junction_move_target() {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+
+    let tmpdir = tempdir().unwrap();
+    let path = PathBuf::from(tmpdir.path());
+    let target_path = path.join("junc_target");
+    fs::create_dir(&target_path).unwrap();
+    let source_path = path.join("junc");
+
+    let status = process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(&source_path)
+        .arg(&target_path)
+        .status()
+        .expect("failed to run mklink");
+    assert!(status.success(), "mklink /J failed");
+
+    // allow_rename=false forces the copy path
+    let dest_path = path.join("graveyard").join("junc");
+    fs::create_dir_all(dest_path.parent().unwrap()).unwrap();
+    let mut log = Vec::new();
+    rip2::move_target(
+        &source_path,
+        &dest_path,
+        false,
+        &TestMode,
+        &mut log,
+        false,
+        &[],
+    )
+    .expect("failed to move junction");
+
+    // Source junction was removed (requires remove_dir, not remove_file)
+    assert!(fs::symlink_metadata(&source_path).is_err());
+    // And recreated as a directory-type link
+    let meta = fs::symlink_metadata(&dest_path).unwrap();
+    assert!(meta.file_type().is_symlink());
+    assert!(meta.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0);
+}

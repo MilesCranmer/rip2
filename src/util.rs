@@ -134,9 +134,14 @@ pub fn yes_no_quit(in_stream: impl Read) -> Result<bool, Error> {
 /// Add a numbered extension to duplicate filenames to avoid overwriting files.
 pub fn rename_grave(grave: impl AsRef<Path>) -> PathBuf {
     let grave = grave.as_ref();
-    let name = grave.to_str().expect("Filename must be valid unicode.");
     (1_u64..)
-        .map(|i| PathBuf::from(format!("{name}~{i}")))
+        .map(|i| {
+            // Append `~{i}` to the file name as an OsString so that names
+            // that are not valid Unicode (e.g. on Windows) are also handled.
+            let mut renamed = grave.as_os_str().to_os_string();
+            renamed.push(format!("~{i}"));
+            PathBuf::from(renamed)
+        })
         .find(|p| !symlink_exists(p))
         .expect("Failed to rename duplicate file or directory")
 }

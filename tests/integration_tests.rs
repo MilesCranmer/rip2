@@ -18,6 +18,8 @@ use tempfile::{tempdir, TempDir};
 use walkdir::WalkDir;
 
 #[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 lazy_static! {
@@ -657,7 +659,8 @@ fn test_issue_18() {
         assert!(!record_contents.contains("gnu_meta.zip"));
 
         // And give this for the last bury
-        let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard);
+        let record =
+            record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard).unwrap();
         let last_bury = record.get_last_bury().unwrap();
         assert!(last_bury.ends_with("uu_meta.zip"));
     }
@@ -808,7 +811,7 @@ fn read_empty_record() {
     let test_env = TestEnv::new();
     let cwd = env::current_dir().unwrap();
     fs::create_dir(&test_env.graveyard).unwrap();
-    let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard);
+    let record = record::Record::<{ record::DEFAULT_FILE_LOCK }>::new(&test_env.graveyard).unwrap();
     let gravepath = &util::join_absolute(&test_env.graveyard, dunce::canonicalize(cwd).unwrap());
     let result = record.seance(gravepath);
     assert!(result.is_ok());
@@ -1115,7 +1118,7 @@ fn _test_concurrent_writes<const FILE_LOCK: bool>() {
     let _env_lock = aquire_lock();
     let test_env = TestEnv::new();
     fs::create_dir(&test_env.graveyard).unwrap();
-    let record = record::Record::<FILE_LOCK>::new(&test_env.graveyard);
+    let record = record::Record::<FILE_LOCK>::new(&test_env.graveyard).unwrap();
     let record_path = test_env.graveyard.join(record::RECORD);
 
     // Create two threads that will write to the record simultaneously
@@ -1959,4 +1962,188 @@ fn test_issue_129_readonly_parent_dir_breaks_first_bury() {
 
     let mode = fs::metadata(&grave_ro_parent).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o555, "mirrored dir should retain 0555 perms");
+}
+
+#[rstest]
+fn test_malformed_record_line() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    fs::create_dir_all(&test_env.graveyard).unwrap();
+    fs::write(
+        test_env.graveyard.join(".record"),
+        "Time\tOriginal\tDestination\nbadline-no-tabs\n",
+    )
+    .unwrap();
+
+    // A malformed line in `.record` must produce a clean error, not a panic.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            seance: true,
+            graveyard: Some(test_env.graveyard),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("malformed record line should produce an error");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("Bad record format"),
+        "Unexpected error message: {err}"
+    );
+}
+
+#[rstest]
+fn test_graveyard_is_a_file() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    let graveyard_file = test_env.src.join("regular-file");
+    fs::write(&graveyard_file, "x").unwrap();
+
+    // Pointing --graveyard at a regular file must produce a clean error,
+    // not a panic while creating `.record`.
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            targets: vec![test_env.src.join("victim")],
+            graveyard: Some(graveyard_file),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("graveyard as a file should produce an error");
+    assert_eq!(err.kind(), ErrorKind::NotADirectory);
+}
+
+/// Burying `alias/link`, where `alias` is a symlink to a directory, must mirror
+/// `alias` as a real directory in the graveyard.
+#[cfg(unix)]
+#[rstest]
+fn test_bury_link_under_symlinked_dir() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+
+    // `real_dir` is a real directory; `alias` is a symlink to it. The target
+    // being buried (`link`) is itself a symlink, which keeps the bury code
+    // from canonicalizing `alias` away.
+    let real_dir = test_env.src.join("real_dir");
+    fs::create_dir(&real_dir).unwrap();
+    let file_target = test_env.src.join("target.txt");
+    fs::write(&file_target, "data").unwrap();
+    let alias = test_env.src.join("alias");
+    symlink(&real_dir, &alias).unwrap();
+    let link = real_dir.join("link");
+    symlink(&file_target, &link).unwrap();
+
+    let target = alias.join("link");
+    let expected_grave = util::join_absolute(&test_env.graveyard, &target);
+    let mut log = Vec::new();
+    rip2::run(
+        &Args {
+            targets: [target].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .expect("burying a file under a symlinked dir should succeed");
+
+    assert!(fs::symlink_metadata(&link).is_err());
+    assert!(fs::symlink_metadata(&alias)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+
+    let grave_alias_meta = fs::symlink_metadata(expected_grave.parent().unwrap()).unwrap();
+    assert!(grave_alias_meta.is_dir());
+    assert!(
+        !grave_alias_meta.file_type().is_symlink(),
+        "mirrored `alias` dir must be a real directory"
+    );
+    assert!(fs::symlink_metadata(&expected_grave)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+/// `rip -u` on a corrupt record must fail instead of restoring nothing and exiting 0.
+#[rstest]
+fn test_unbury_malformed_record_errors() {
+    let _env_lock = aquire_lock();
+    let test_env = TestEnv::new();
+    let test_data = TestData::new(&test_env, None);
+
+    // Bury a file so the graveyard holds one valid grave
+    let mut log = Vec::new();
+    rip2::run(
+        &Args {
+            targets: [test_data.path.clone()].to_vec(),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    )
+    .unwrap();
+    // The source file has been moved away by the bury, so compute the grave
+    // path from the still-existing source directory.
+    let grave = util::join_absolute(
+        &test_env.graveyard,
+        dunce::canonicalize(&test_env.src)
+            .unwrap()
+            .join("test_file.txt"),
+    );
+
+    // Corrupt the record with a malformed line
+    let record_path = test_env.graveyard.join(record::RECORD);
+    let mut record_contents = fs::read_to_string(&record_path).unwrap();
+    record_contents.push_str("badline-no-tabs\n");
+    fs::write(&record_path, record_contents).unwrap();
+
+    // `rip -u` (restore the last bury) must error out
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            unbury: Some(Vec::new()),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("rip -u on a corrupt record should fail");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // `rip -u <grave>` (explicit selection) must error out too
+    let mut log = Vec::new();
+    let result = rip2::run(
+        &Args {
+            unbury: Some(vec![grave]),
+            graveyard: Some(test_env.graveyard.clone()),
+            ..Args::default()
+        },
+        TestMode,
+        &mut log,
+    );
+    let err = result.expect_err("rip -u <grave> on a corrupt record should fail");
+    assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+    // The same failure is visible at the CLI level as a nonzero exit
+    let output = cli_runner(
+        [
+            "--graveyard",
+            test_env.graveyard.to_str().unwrap(),
+            "--unbury",
+        ],
+        Some(&test_env.src),
+    )
+    .output()
+    .unwrap();
+    assert!(
+        !output.status.success(),
+        "rip -u on a corrupt record should exit nonzero"
+    );
 }

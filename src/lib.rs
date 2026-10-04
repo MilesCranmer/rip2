@@ -2,7 +2,7 @@ use clap::CommandFactory;
 use fs_extra::dir::get_size;
 use std::fs::Metadata;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::{env, fs};
 use walkdir::WalkDir;
 
@@ -21,10 +21,10 @@ use nix::sys::stat::Mode;
 #[cfg(unix)]
 use nix::unistd::mkfifo;
 #[cfg(unix)]
-use std::os::unix::fs::{symlink, FileTypeExt, PermissionsExt};
+use std::os::unix::fs::{symlink, symlink as symlink_dir, FileTypeExt, PermissionsExt};
 
 #[cfg(target_os = "windows")]
-use std::os::windows::fs::symlink_file as symlink;
+use std::os::windows::fs::{symlink_dir, symlink_file as symlink};
 
 pub mod args;
 pub mod completions;
@@ -49,10 +49,15 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         {
             fs::set_permissions(graveyard, fs::Permissions::from_mode(0o700))?;
         }
+    } else if !graveyard.is_dir() {
+        return Err(Error::new(
+            ErrorKind::NotADirectory,
+            format!("Graveyard path is not a directory: {}", graveyard.display()),
+        ));
     }
 
     // Stores the deleted files
-    let record = Record::<DEFAULT_FILE_LOCK>::new(graveyard);
+    let record = Record::<DEFAULT_FILE_LOCK>::new(graveyard)?;
     let cwd = &env::current_dir()?;
 
     // If the user wishes to restore everything
@@ -72,22 +77,31 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         if cli.seance && record.open().is_ok() {
             let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
             for grave in record.seance(&gravepath)? {
-                graves_to_exhume.push(grave.dest);
+                graves_to_exhume.push(grave?.dest);
             }
         }
 
         // Otherwise, add the last deleted file
         if graves_to_exhume.is_empty() {
-            if let Ok(s) = record.get_last_bury() {
-                graves_to_exhume.push(s);
+            match record.get_last_bury() {
+                Ok(s) => graves_to_exhume.push(s),
+                // NotFound means the record is empty, so there is nothing to restore.
+                Err(e) if e.kind() == ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(Error::new(
+                        e.kind(),
+                        format!("Failed to look up the last buried file: {e}"),
+                    ))
+                }
             }
         }
 
         let allow_rename = util::allow_rename();
 
         // Go through the graveyard and exhume all the graves
-        for line in record.lines_of_graves(graves_to_exhume) {
-            let entry = RecordItem::new(&line);
+        for line in record.lines_of_graves(graves_to_exhume)? {
+            let line = line?;
+            let entry = RecordItem::new(&line)?;
             let orig: PathBuf = if util::symlink_exists(&entry.orig) {
                 util::rename_grave(&entry.orig)
             } else {
@@ -126,6 +140,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
         writeln!(stream, "{: <19}\tpath", "deletion_time")?;
         for grave in record.seance(&gravepath)? {
+            let grave = grave?;
             let formatted_time = grave.format_time_for_display()?;
             writeln!(stream, "{}\t{}", formatted_time, grave.dest.display())?;
         }
@@ -169,7 +184,7 @@ fn bury_target<const FILE_LOCK: bool>(
             ErrorKind::NotFound,
             format!(
                 "Cannot remove {}: no such file or directory",
-                target.to_str().unwrap()
+                target.display()
             ),
         )
     })?;
@@ -232,7 +247,7 @@ fn bury_target<const FILE_LOCK: bool>(
         )
         .map_err(|e| {
             fs::remove_dir_all(dest).ok();
-            Error::new(e.kind(), "Failed to bury file")
+            Error::new(e.kind(), format!("Failed to bury file: {e}"))
         })?;
 
         if moved {
@@ -263,7 +278,7 @@ fn should_we_bury_this(
             writeln!(
                 stream,
                 "{}: directory, {} including:",
-                target.to_str().unwrap(),
+                target.display(),
                 util::humanize_bytes(num_bytes)
             )?;
         }
@@ -283,7 +298,7 @@ fn should_we_bury_this(
         writeln!(
             stream,
             "{}: file, {}",
-            &target.to_str().unwrap(),
+            target.display(),
             util::humanize_bytes(metadata.len())
         )?;
         // Read the file and print the first few lines
@@ -300,7 +315,7 @@ fn should_we_bury_this(
         }
     }
     util::prompt_yes(
-        format!("Send {} to the graveyard?", target.to_str().unwrap()),
+        format!("Send {} to the graveyard?", target.display()),
         mode,
         stream,
     )
@@ -315,11 +330,19 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
     for component in source.components() {
         // Build cumulative source path
         cumulative_source.push(component.as_os_str());
+        let is_final_component = cumulative_source == source;
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
-            // Only add directories to the list (skip the final file component)
-            if cumulative_source.is_dir() {
+            // Mirror every directory, including symlinked ancestors. The final
+            // component is moved rather than recreated, so a link there must not
+            // be pre-created as a real dir. Windows prefixes never report `is_dir`.
+            let is_link = fs::symlink_metadata(&cumulative_source)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            if matches!(component, Component::Prefix(_))
+                || (cumulative_source.is_dir() && !(is_final_component && is_link))
+            {
                 let permissions = fs::metadata(&cumulative_source)
                     .map(|m| m.permissions())
                     .ok();
@@ -346,11 +369,14 @@ fn build_dirs_to_create_from_graveyard(
     let mut orig_current = orig_path.parent();
 
     while let (Some(g), Some(o)) = (graveyard_current, orig_current) {
-        let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
-        dirs_to_create.push(DirToCreate {
-            path: o.to_path_buf(),
-            permissions,
-        });
+        // Skip pseudo-ancestors like the Windows `\\?\` prefix, which `create_dir` rejects.
+        if o.components().any(|c| matches!(c, Component::Normal(_))) {
+            let permissions = fs::metadata(g).map(|m| m.permissions()).ok();
+            dirs_to_create.push(DirToCreate {
+                path: o.to_path_buf(),
+                permissions,
+            });
+        }
 
         // Move up one level
         graveyard_current = g.parent();
@@ -421,7 +447,8 @@ pub fn move_target(
     // If that didn't work, then we need to copy and rm.
     let created_dirs = create_dirs_for_copy(dirs_to_create)?;
 
-    if fs::symlink_metadata(target)?.is_dir() {
+    let target_metadata = fs::symlink_metadata(target)?;
+    if target_metadata.is_dir() {
         let moved = move_dir(target, dest, mode, stream, force)?;
         apply_dir_permissions(&created_dirs)?;
         Ok(moved)
@@ -436,7 +463,13 @@ pub fn move_target(
                 ),
             )
         })?;
-        fs::remove_file(target).map_err(|e| {
+        // On Windows, junctions and directory symlinks need `remove_dir`.
+        if is_dir_link(&target_metadata) {
+            fs::remove_dir(target)
+        } else {
+            fs::remove_file(target)
+        }
+        .map_err(|e| {
             Error::new(
                 e.kind(),
                 format!("Failed to remove file: {}", target.display()),
@@ -445,6 +478,19 @@ pub fn move_target(
         apply_dir_permissions(&created_dirs)?;
         Ok(moved)
     }
+}
+
+/// Junctions and directory symlinks on Windows: links carrying the directory attribute.
+#[cfg(target_os = "windows")]
+fn is_dir_link(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+    metadata.file_type().is_symlink() && metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_dir_link(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 /// Move a target which is a directory to a given destination, copying if necessary.
@@ -564,7 +610,13 @@ pub fn copy_file(
 
     if filetype.is_symlink() {
         let target = fs::read_link(source)?;
-        symlink(target, dest)?;
+        if is_dir_link(&metadata) {
+            // A file-type symlink to a directory cannot be traversed, and `read_link`
+            // returns junction targets with a `\\?\` prefix.
+            symlink_dir(dunce::simplified(&target), dest)?;
+        } else {
+            symlink(target, dest)?;
+        }
         return Ok(true);
     }
 
