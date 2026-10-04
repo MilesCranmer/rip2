@@ -2017,11 +2017,8 @@ fn test_graveyard_is_a_file() {
     assert_eq!(err.kind(), ErrorKind::NotADirectory);
 }
 
-/// Burying `alias/link` where `alias` is a symlink to a directory must mirror
-/// `alias` as a *real* directory in the graveyard: only the final component
-/// being buried skips mirroring. Regression test for a bug where every
-/// symlinked path component was skipped, leaving the mirrored `alias` dir
-/// uncreated and the bury failing with ENOENT.
+/// Burying `alias/link`, where `alias` is a symlink to a directory, must mirror
+/// `alias` as a real directory in the graveyard.
 #[cfg(unix)]
 #[rstest]
 fn test_bury_link_under_symlinked_dir() {
@@ -2040,7 +2037,6 @@ fn test_bury_link_under_symlinked_dir() {
     let link = real_dir.join("link");
     symlink(&file_target, &link).unwrap();
 
-    // Bury the file through the symlinked directory
     let target = alias.join("link");
     let expected_grave = util::join_absolute(&test_env.graveyard, &target);
     let mut log = Vec::new();
@@ -2055,16 +2051,12 @@ fn test_bury_link_under_symlinked_dir() {
     )
     .expect("burying a file under a symlinked dir should succeed");
 
-    // The link is gone from the source, but the `alias` symlink itself is
-    // untouched.
     assert!(fs::symlink_metadata(&link).is_err());
     assert!(fs::symlink_metadata(&alias)
         .unwrap()
         .file_type()
         .is_symlink());
 
-    // The graveyard mirrors `alias` as a real directory and the buried file
-    // lands beneath it as a link.
     let grave_alias_meta = fs::symlink_metadata(expected_grave.parent().unwrap()).unwrap();
     assert!(grave_alias_meta.is_dir());
     assert!(
@@ -2077,8 +2069,7 @@ fn test_bury_link_under_symlinked_dir() {
         .is_symlink());
 }
 
-/// A malformed line in `.record` must propagate to the caller on unbury —
-/// `rip -u` on a corrupt record cannot silently restore nothing and exit 0.
+/// `rip -u` on a corrupt record must fail instead of restoring nothing and exiting 0.
 #[rstest]
 fn test_unbury_malformed_record_errors() {
     let _env_lock = aquire_lock();

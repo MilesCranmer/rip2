@@ -336,22 +336,9 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
-            // Queue directories that must exist in the graveyard before the
-            // copy. Three cases:
-            //   - Windows path prefixes (e.g. `C:\` or verbatim `\\?\D:`) always
-            //     get their own directory in the graveyard, even though a bare
-            //     prefix like `\\?\D:` does not report `is_dir`.
-            //   - Directories in the source path are queued, including ancestor
-            //     components that are themselves links (e.g. `alias` in
-            //     `alias/file` where `alias` is a symlink to a directory):
-            //     ancestors are always mirrored as real directories because
-            //     only the final component is moved, not recreated.
-            //   - The final component is the target being buried: if it is a
-            //     link it must NOT be pre-created as a real directory, even
-            //     though `is_dir` follows it and may report true (e.g. a
-            //     junction or a symlink to a directory): creating the
-            //     destination as a real dir would prevent the link itself from
-            //     being created there.
+            // Mirror every directory, including symlinked ancestors. The final
+            // component is moved rather than recreated, so a link there must not
+            // be pre-created as a real dir. Windows prefixes never report `is_dir`.
             let is_link = fs::symlink_metadata(&cumulative_source)
                 .map(|m| m.file_type().is_symlink())
                 .unwrap_or(false);
@@ -480,7 +467,13 @@ pub fn move_target(
                 ),
             )
         })?;
-        remove_file_or_link(target, &target_metadata).map_err(|e| {
+        // On Windows, junctions and directory symlinks need `remove_dir`.
+        if is_dir_link(&target_metadata) {
+            fs::remove_dir(target)
+        } else {
+            fs::remove_file(target)
+        }
+        .map_err(|e| {
             Error::new(
                 e.kind(),
                 format!("Failed to remove file: {}", target.display()),
@@ -491,24 +484,17 @@ pub fn move_target(
     }
 }
 
-/// Remove `target` after its contents were copied to the graveyard.
-///
-/// On Windows, directory reparse points such as junctions and directory
-/// symlinks are links, not files: `remove_file` fails on them, so they must be
-/// deleted with `remove_dir` (which removes the link itself, not its target).
-fn remove_file_or_link(target: &Path, metadata: &fs::Metadata) -> Result<(), Error> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
-        if metadata.file_type().is_symlink()
-            && metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0
-        {
-            return fs::remove_dir(target);
-        }
-    }
-    let _ = metadata;
-    fs::remove_file(target)
+/// Junctions and directory symlinks on Windows: links carrying the directory attribute.
+#[cfg(target_os = "windows")]
+fn is_dir_link(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+    metadata.file_type().is_symlink() && metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_dir_link(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 /// Move a target which is a directory to a given destination, copying if necessary.
@@ -628,7 +614,14 @@ pub fn copy_file(
 
     if filetype.is_symlink() {
         let target = fs::read_link(source)?;
-        create_link(&target, dest, &metadata)?;
+        // A file-type symlink to a directory cannot be traversed, and `read_link`
+        // returns junction targets with a `\\?\` prefix.
+        #[cfg(target_os = "windows")]
+        if is_dir_link(&metadata) {
+            std::os::windows::fs::symlink_dir(dunce::simplified(&target), dest)?;
+            return Ok(true);
+        }
+        symlink(target, dest)?;
         return Ok(true);
     }
 
@@ -655,28 +648,6 @@ pub fn copy_file(
     }
 }
 
-/// Create a link at `dest` pointing to `target`.
-///
-/// On Windows, links to directories --- junctions as well as directory
-/// symlinks --- must be created with `symlink_dir`: a file-type symlink that
-/// points to a directory is invalid and cannot be traversed like a directory.
-/// Both kinds of directory link carry the directory file attribute, which is
-/// used to distinguish them from file links.
-fn create_link(target: &Path, dest: &Path, metadata: &fs::Metadata) -> Result<(), Error> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
-        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-            // `dunce::simplified` strips the `\\?\` verbatim prefix that
-            // `read_link` reports for junction targets.
-            return std::os::windows::fs::symlink_dir(dunce::simplified(target), dest);
-        }
-    }
-    let _ = metadata;
-    symlink(target, dest)
-}
-
 pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
     graveyard.unwrap_or_else(|| {
         if let Ok(env_graveyard) = env::var("RIP_GRAVEYARD") {
@@ -697,10 +668,7 @@ pub fn get_graveyard(graveyard: Option<PathBuf>) -> PathBuf {
 /// Testing module for exposing internal functions to unit tests.
 /// This module is only used for testing purposes and should not be used in production code.
 pub mod testing {
-    use super::{
-        build_graveyard_dest, should_we_bury_this, util, DirToCreate, Error, Metadata, Path,
-        PathBuf, Write,
-    };
+    use super::{should_we_bury_this, util, Error, Metadata, Path, PathBuf, Write};
 
     pub fn testable_should_we_bury_this(
         target: &Path,
@@ -709,14 +677,5 @@ pub mod testing {
         stream: &mut impl Write,
     ) -> Result<bool, Error> {
         should_we_bury_this(target, source, metadata, &util::TestMode, stream)
-    }
-
-    /// Expose `build_graveyard_dest` so tests can check which directories are
-    /// queued for mirroring in the graveyard.
-    pub fn testable_build_graveyard_dest(
-        graveyard: &Path,
-        source: &Path,
-    ) -> (PathBuf, Vec<DirToCreate>) {
-        build_graveyard_dest(graveyard, source)
     }
 }
