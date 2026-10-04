@@ -327,11 +327,10 @@ fn build_graveyard_dest(graveyard: &Path, source: &Path) -> (PathBuf, Vec<DirToC
     let mut dirs_to_create = Vec::new();
     let mut cumulative_source = PathBuf::new();
 
-    let mut components = source.components().peekable();
-    while let Some(component) = components.next() {
+    for component in source.components() {
         // Build cumulative source path
         cumulative_source.push(component.as_os_str());
-        let is_final_component = components.peek().is_none();
+        let is_final_component = cumulative_source == source;
 
         // Process component for destination using shared logic
         if util::push_component_to_dest(&mut dest, &component) {
