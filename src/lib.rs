@@ -32,7 +32,7 @@ pub mod record;
 pub mod util;
 
 use args::Args;
-use record::{Record, DEFAULT_FILE_LOCK};
+use record::{Record, RecordItem, DEFAULT_FILE_LOCK};
 
 const LINES_TO_INSPECT: usize = 6;
 const FILES_TO_INSPECT: usize = 6;
@@ -77,7 +77,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         if cli.seance && record.open().is_ok() {
             let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
             for grave in record.seance(&gravepath)? {
-                graves_to_exhume.push(grave.dest);
+                graves_to_exhume.push(grave?.dest);
             }
         }
 
@@ -99,7 +99,9 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         let allow_rename = util::allow_rename();
 
         // Go through the graveyard and exhume all the graves
-        for entry in record.entries_of_graves(graves_to_exhume)? {
+        for line in record.lines_of_graves(graves_to_exhume)? {
+            let line = line?;
+            let entry = RecordItem::new(&line)?;
             let orig: PathBuf = if util::symlink_exists(&entry.orig) {
                 util::rename_grave(&entry.orig)
             } else {
@@ -138,6 +140,7 @@ pub fn run(cli: &Args, mode: impl util::TestingMode, stream: &mut impl Write) ->
         let gravepath = util::join_absolute(graveyard, dunce::canonicalize(cwd)?);
         writeln!(stream, "{: <19}\tpath", "deletion_time")?;
         for grave in record.seance(&gravepath)? {
+            let grave = grave?;
             let formatted_time = grave.format_time_for_display()?;
             writeln!(stream, "{}\t{}", formatted_time, grave.dest.display())?;
         }
