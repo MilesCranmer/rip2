@@ -148,8 +148,8 @@ impl<const FILE_LOCK: bool> Record<FILE_LOCK> {
         // This will be None if there is nothing, or Some
         // if there is items in the vector
         let mut graves_to_exhume: Vec<PathBuf> = Vec::new();
-        for entry in contents.lines().rev().map(RecordItem::new) {
-            let entry = entry?;
+        for line in contents.lines().rev() {
+            let entry = RecordItem::new(line)?;
             // Check that the file is still in the graveyard.
             // If it is, return the corresponding line.
             if util::symlink_exists(&entry.dest) {
