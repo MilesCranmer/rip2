@@ -4,7 +4,7 @@ name = "rip2"
 version = "0.9.7"
 authors = ["mail@nivekuil.com", "mahid@standingpad.org", "miles.cranmer@gmail.com"]
 description = "rip: a safe and ergonomic alternative to rm"
-repository = "https://github.com/MilesCranmer/rip"
+repository = "https://github.com/MilesCranmer/rip2"
 readme = "README.md"
 license = "GPL-3.0+"
 include = [
@@ -52,3 +52,35 @@ path = "tests/integration_tests.rs"
 [[bin]]
 name = "rip"
 path = "src/main.rs"
+
+[package.metadata.binstall]
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+[package.metadata.binstall.overrides.x86_64-unknown-freebsd]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-FreeBSD-x86_64.tar.gz"
+[package.metadata.binstall.overrides.x86_64-unknown-linux-musl]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-x86_64-musl.tar.gz"
+[package.metadata.binstall.overrides.aarch64-unknown-linux-musl]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-aarch64-musl.tar.gz"
+[package.metadata.binstall.overrides.arm-unknown-linux-musleabi]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-arm-musl.tar.gz"
+[package.metadata.binstall.overrides.i686-unknown-linux-musl]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-i686-musl.tar.gz"
+[package.metadata.binstall.overrides.powerpc-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-powerpc-gnu.tar.gz"
+[package.metadata.binstall.overrides.powerpc64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-powerpc64-gnu.tar.gz"
+[package.metadata.binstall.overrides.powerpc64le-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-powerpc64le.tar.gz"
+[package.metadata.binstall.overrides.s390x-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Linux-s390x-gnu.tar.gz"
+[package.metadata.binstall.overrides.i686-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Windows-i686.zip"
+pkg-fmt = "zip"
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-Windows-x86_64.zip"
+pkg-fmt = "zip"
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-macOS-Darwin-x86_64.tar.gz"
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/rip-macOS-Darwin-aarch64.tar.gz"
