@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/MilesCranmer/rip2/compare/v0.9.7...v0.10.0) (2026-11-21)
+
+
+### Features
+
+* cargo-binstall compatability ([#140](https://github.com/MilesCranmer/rip2/issues/140)) ([3e65613](https://github.com/MilesCranmer/rip2/commit/3e65613a5c1e9ccf257142a89d794fee66d97ce9))
+
 ## [0.9.7](https://github.com/MilesCranmer/rip2/compare/v0.9.6...v0.9.7) (2026-10-04)
 
 
